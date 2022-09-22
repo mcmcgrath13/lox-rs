@@ -20,13 +20,14 @@ impl RunTime {
     }
 
     fn run(&self, code: &String) {
-        let scanner = Scanner::new(code, &self);
+        let mut scanner = Scanner::new(code);
         scanner.scan_tokens();
-        for token in scanner.tokens() {
+        for token in scanner.tokens {
             println!("{}", token);
         }
     }
 
+    // TODO: use Result instead of passing this function around
     fn error(&mut self, line: u64, message: &String) {
         self.report(line, &String::new(), message);
         self.had_error = true;

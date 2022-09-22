@@ -1,19 +1,18 @@
 use std::str::FromStr;
-use std::collections::HashMap;
+use std::result::Result;
 
 use crate::token::{Token, TokenType};
-use crate::RunTime;
 
-pub struct Scanner<'a> {
-    source: String,
-    tokens: Vec<Token>,
-    start: u64,
-    current: u64,
-    line: u64,
-    rt: &'a RunTime
+pub struct Scanner<'code> {
+    source: &'code String,
+    pub tokens: Vec<Token<'code>>,
+    start: usize,
+    current: usize,
+    line: usize
 }
 
-const KEYWORDS: HashMap<&str, TokenType> = HashMap::from([
+
+const KEYWORDS: &[(&str, TokenType)] = &[
     ("and", TokenType::And),
     ("class", TokenType::Class),
     ("else", TokenType::Else),
@@ -30,172 +29,222 @@ const KEYWORDS: HashMap<&str, TokenType> = HashMap::from([
     ("true", TokenType::True),
     ("var", TokenType::Var),
     ("while", TokenType::While),
-]);
+];
 
-impl Scanner<'_> {
-    fn new(source: String, &rt: RunTime) -> Scanner<'static> {
-        Scanner { source: source, tokens: Vec::new(), start: 0, current: 0, line: 1, rt}
+// Use binary search to access the map:
+fn get_keyword(key: &str) -> Result<TokenType, usize> {
+    KEYWORDS.binary_search_by(|(k, _)| k.cmp(&key)).map(|x| KEYWORDS[x].1)
+}
+
+fn is_digit(c: &str) -> bool {
+    return c >= "0" && c <= "9";
+}
+
+fn is_alpha(c: &str) -> bool {
+    return (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c == "_";
+}
+
+fn is_alphanumeric(c: &str) -> bool {
+    return is_alpha(c) || is_digit(c)
+}
+
+impl<'code> Scanner<'code> {
+    pub fn new(source: &'code String) -> Scanner<'code> {
+        Scanner{ source: source, tokens: Vec::new(), start: 0, current: 0, line: 1}
     }
 
-    pub fn tokens(&self) -> Vec<Token> {
-        return self.tokens;
-    }
-
-    pub fn scan_tokens(&self) {
+    pub fn scan_tokens(&mut self) {
         while !self.is_at_end() {
             self.start = self.current;
             self.scan_token();
         }
 
-        self.tokens.push(Token{ t: TokenType::Eof, lexeme: "", literal: None, line: self.line})
+        self.tokens.push(Token{ t: TokenType::Eof, lexeme: "", line: self.line})
     }
 
-    fn scan_token(&self) {
+    fn scan_token(&mut self) -> Result<(), &str> {
         let c = self.advance();
         match c {
             // single tokens
-            '(' => self.add_token(TokenType::LeftParen),
-            ')' => self.add_token(TokenType::RightParen),
-            '{' => self.add_token(TokenType::LeftBrace),
-            '}' => self.add_token(TokenType::RightBrace),
-            ',' => self.add_token(TokenType::Comma),
-            '.' => self.add_token(TokenType::Dot),
-            '-' => self.add_token(TokenType::Minus),
-            '+' => self.add_token(TokenType::Plus),
-            ';' => self.add_token(TokenType::Semicolon),
-            '*' => self.add_token(TokenType::Star),
+            "(" => self.add_token(TokenType::LeftParen),
+            ")" => self.add_token(TokenType::RightParen),
+            "{" => self.add_token(TokenType::LeftBrace),
+            "}" => self.add_token(TokenType::RightBrace),
+            "," => self.add_token(TokenType::Comma),
+            "." => self.add_token(TokenType::Dot),
+            "-" => self.add_token(TokenType::Minus),
+            "+" => self.add_token(TokenType::Plus),
+            ";" => self.add_token(TokenType::Semicolon),
+            "*" => self.add_token(TokenType::Star),
 
             // multi-tokens
-            '!' => self.add_token(if self.match_next('=') {TokenType::BangEqual} else {TokenType::Bang}),
-            '=' => self.add_token(if self.match_next('=') {TokenType::EqualEqual} else {TokenType::Equal}),
-            '<' => self.add_token(if self.match_next('=') {TokenType::LessEqual} else  {TokenType::Less}),
-            '>' => self.add_token(if self.match_next('=') {TokenType::GreaterEqual} else  {TokenType::Greater}),
-            '/' => {
-                if self.match_next('/') {
+            "!" => {
+                let is_match = self.match_next("=");
+                self.add_token(if is_match {TokenType::BangEqual} else {TokenType::Bang})
+            },
+            "=" => {
+                let is_match = self.match_next("=");
+                self.add_token(if is_match {TokenType::EqualEqual} else {TokenType::Equal})
+            },
+            "<" => {
+                let is_match = self.match_next("=");
+                self.add_token(if is_match {TokenType::LessEqual} else  {TokenType::Less})
+            },
+            ">" => {
+                let is_match = self.match_next("=");
+                self.add_token(if is_match {TokenType::GreaterEqual} else  {TokenType::Greater})
+            },
+            "/" => {
+                if self.match_next("/") {
                     // A comment goes to the end of the line
-                    while self.peek() != '\n' && !self.is_at_end() { self.advance() }
+                    while self.peek() != "\n" && !self.is_at_end() { self.advance(); }
                 } else {
                     self.add_token(TokenType::Slash)
                 }
             },
 
             // whitespace
-            ' ' => {},
-            '\t' => {},
-            '\n' => self.line += 1,
-            '\r' => {},
+            " " => {},
+            "\t" => {},
+            "\n" => self.line += 1,
+            "\r" => {},
 
             // literals
-            '"' => self.string(),
+            "\"" => {
+                match self.string() {
+                    Err(e) => return Err(e),
+                    _ => (),
+                }
+            },
 
             // ruh roh
             _ => {
-                if self.is_digit(c) {
+                if is_digit(c) {
                     self.number();
-                } else if self.is_alpha(c) {
+                } else if is_alpha(c) {
                     self.identifier();
                 } else {
-                    self.rt.error(self.line, format!("Unexpected character, {}", c));
+                    return Err("Unexpected character")
                 }
             }
         }
+
+        return Ok(())
     }
 
     // HELPER FUNCTIONS
+    fn next_char(&self, i: usize) -> usize {
+        self.offset_char(i, 1)
+    }
+
+    fn offset_char(&self, i: usize, offset: i64) -> usize {
+        let mut index = i;
+        let mut rem_offset = offset;
+        if offset > 0 {
+            while rem_offset != 0 {
+                index += 1;
+                while !self.source.is_char_boundary(index) {
+                    index += 1
+                }
+                rem_offset -= 1;
+            }
+        } else {
+            while rem_offset != 0 {
+                index -= 1;
+                while !self.source.is_char_boundary(index) {
+                    index -= 1
+                }
+                rem_offset += 1;
+            }
+        }
+
+        return index
+    }
+
+
     fn is_at_end(&self) -> bool {
         return self.current >= self.source.len().try_into().unwrap()
     }
 
-    fn advance(&self) -> &str {
-        let next = self.source[self.current];
-        self.current += 1;
+    fn get_char(&self, i: usize) -> &str {
+        &self.source[i..self.next_char(i)]
+    }
+
+    fn advance(&mut self) -> &str {
+        let current = self.current.clone();
+        self.current = self.next_char(current);
+        let next = self.get_char(current);
         return next;
     }
 
-    fn match_next(&self, expected: &str) -> bool {
+    fn match_next(&mut self, expected: &str) -> bool {
         if self.is_at_end() {
             return false
         }
 
-        if self.source[self.current] != expected {
+        if self.get_char(self.current) != expected {
             return false;
         }
 
-        self.current += 1;
+        self.current = self.next_char(self.current);
         return true;
     }
 
-    fn peek(&self) -> character {
+    fn peek(&self) -> &str {
         if self.is_at_end() {
-            return '\0';
+            return "\0";
         } else {
-            return self.source[self.current];
+            return self.get_char(self.current);
         }
     }
 
-    fn peek_next(&self) -> character {
-        if self.current + 1 > self.source.len().try_into().unwrap() { return '\0' }
+    fn peek_next(&self) -> &str {
+        if self.next_char(self.current) > self.source.len().try_into().unwrap() { return "\0" }
 
-        return self.source[self.current + 1];
+        return self.get_char(self.next_char(self.current));
     }
 
-    fn is_digit(&self, c: character) -> bool {
-        return c >= '0' && c <= '9';
-    }
-
-    fn is_alpha(&self, c: character) -> bool {
-        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
-    }
-
-    fn is_alphanumeric(&self, c: character) -> bool {
-        return self.is_alpha(c) || self.is_digit(c)
-    }
-
-    fn string(&self) {
-        while self.peek() != '"' && !self.is_at_end() {
-            if self.peek() == '\n' {self.line += 1}
+    fn string(&mut self) -> Result<(), &str> {
+        while self.peek() != "\"" && !self.is_at_end() {
+            if self.peek() == "\n" {self.line += 1}
             self.advance();
         }
 
         if self.is_at_end() {
-            self.rt.error(self.line, "Unterminated string");
-            return;
+            return Err("Unterminated string");
         }
 
         self.advance();
-        self.add_literal_token(TokenType::String, self.source[self.start+1..self.current-1]);
+        self.add_token(TokenType::String(&self.source[self.next_char(self.start)..self.offset_char(self.current, -1)]));
+
+        return Ok(())
     }
 
-    fn number(&self) {
-        while self.is_digit(self.peek()) { self.advance(); };
+    fn number(&mut self) {
+        while is_digit(self.peek()) { self.advance(); };
 
-        if self.peek() == '.'&& self.is_digit(self.peek_next()) {
+        if self.peek() == "." && is_digit(self.peek_next()) {
             self.advance();
 
-            while self.is_digit(self.peek()) { self.advance(); };
+            while is_digit(self.peek()) { self.advance(); };
         }
 
-        self.add_literal_token(TokenType::Number, f64::from_str(self.source[self.start..self.current]).unwrap())
+        // f64::from_str(self.source[self.start..self.current]).unwrap()
+        self.add_token(TokenType::Number(f64::from_str(&self.source[self.start..self.next_char(self.current)]).unwrap()))
     }
 
-    fn identifier(&self) {
-        while self.is_alphanumeric(self.peek()) { self.advance(); };
+    fn identifier(&mut self) {
+        while is_alphanumeric(self.peek()) { self.advance(); };
 
-        let text = self.source[self.start..self.current];
-        let token_type = match KEYWORDS.get(text) {
-            Some(t) => t,
-            None => TokenType::Identifier
+        let text = &self.source[self.start..self.next_char(self.current)];
+        match get_keyword(&text) {
+            Ok(t) => self.add_token(t),
+            Err(_) => self.add_token(TokenType::Identifier(&text))
         };
-
-        self.add_token(token_type)
     }
 
-    fn add_token(&self, t: TokenType) {
-        self.add_literal_token(t, None)
-    }
-
-    fn add_literal_token<T>(&self, t: TokenType, literal: T) {
-        let lexeme = self.source[self.start..self.current];
-        self.tokens.push(Token { t, lexeme, literal, line: self.line})
+    fn add_token(&mut self, t: TokenType<'code>) {
+        let lexeme = &self.source[self.start..self.current];
+        self.tokens.push(Token { t, lexeme, line: self.line})
     }
 }

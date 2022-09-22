@@ -1,6 +1,7 @@
 use std::fmt;
 
-pub enum TokenType {
+#[derive(Copy, Clone)]
+pub enum TokenType<'literal> {
     // Single-character tokens.
     LeftParen, RightParen, LeftBrace, RightBrace,
     Comma, Dot, Minus, Plus, Semicolon, Slash, Star,
@@ -12,7 +13,9 @@ pub enum TokenType {
     Less, LessEqual,
 
     // Literals.
-    Identifier, String, Number,
+    Identifier(&'literal str),
+    String(&'literal str),
+    Number(f64),
 
     // Keywords.
     And, Class, Else, False, Fun, For, If, Nil, Or,
@@ -21,15 +24,26 @@ pub enum TokenType {
     Eof
 }
 
-pub struct Token<T> {
-    t: TokenType,
-    lexeme: String,
-    literal: T, // this has type "Object" in java - maybe reconsider type here?
-    line: u64
+impl fmt::Display for TokenType<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            TokenType::Identifier(v) => write!(f, "Identifier {}", v),
+            TokenType::Number(v) => write!(f, "Number {}", v),
+            TokenType::String(v) => write!(f, "String {}", v),
+            _ => write!(f, "Something else")
+        }
+    }
 }
 
-impl fmt::Display for Token<T> {
+pub struct Token<'code> {
+    pub t: TokenType<'code>,
+    pub lexeme: &'code str,
+    pub line: usize
+}
+
+// TODO: fix this
+impl fmt::Display for Token<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} {} {}", self.t, self.lexeme, self.literal)
+        write!(f, "[{}] {} {}", self.line, self.t, self.lexeme)
     }
 }

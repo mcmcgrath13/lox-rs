@@ -16,8 +16,8 @@ const KEYWORDS: &[(&str, TokenType)] = &[
     ("class", TokenType::Class),
     ("else", TokenType::Else),
     ("false", TokenType::False),
-    ("fun", TokenType::Fun),
     ("for", TokenType::For),
+    ("fun", TokenType::Fun),
     ("if", TokenType::If),
     ("nil", TokenType::Nil),
     ("or", TokenType::Or),
@@ -32,9 +32,12 @@ const KEYWORDS: &[(&str, TokenType)] = &[
 
 // Use binary search to access the map:
 fn get_keyword(key: &str) -> Result<TokenType, usize> {
-    KEYWORDS
+    println!("|{}|", key);
+    let res = KEYWORDS
         .binary_search_by(|(k, _)| k.cmp(&key))
-        .map(|x| KEYWORDS[x].1)
+        .map(|x| KEYWORDS[x].1);
+    println!("{:?}", res);
+    res
 }
 
 fn is_digit(c: &str) -> bool {
@@ -263,7 +266,7 @@ impl<'code> Scanner<'code> {
 
         // f64::from_str(self.source[self.start..self.current]).unwrap()
         self.add_token(TokenType::Number(
-            f64::from_str(&self.source[self.start..self.next_char(self.current)]).unwrap(),
+            f64::from_str(&self.source[self.start..self.current]).unwrap(),
         ))
     }
 
@@ -272,10 +275,10 @@ impl<'code> Scanner<'code> {
             self.advance();
         }
 
-        let text = &self.source[self.start..self.next_char(self.current)];
+        let text = &self.source[self.start..self.current];
         match get_keyword(text) {
             Ok(t) => self.add_token(t),
-            Err(_) => self.add_token(TokenType::Identifier(text)),
+            Err(_) => self.add_token(TokenType::Identifier),
         };
     }
 

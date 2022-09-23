@@ -32,12 +32,9 @@ const KEYWORDS: &[(&str, TokenType)] = &[
 
 // Use binary search to access the map:
 fn get_keyword(key: &str) -> Result<TokenType, usize> {
-    println!("|{}|", key);
-    let res = KEYWORDS
+    KEYWORDS
         .binary_search_by(|(k, _)| k.cmp(&key))
-        .map(|x| KEYWORDS[x].1);
-    println!("{:?}", res);
-    res
+        .map(|x| KEYWORDS[x].1)
 }
 
 fn is_digit(c: &str) -> bool {

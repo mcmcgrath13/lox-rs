@@ -2,7 +2,7 @@ use std::fmt;
 
 #[derive(Copy, Clone, Debug)]
 pub enum TokenType<'literal> {
-    // Single-character tokens.
+    // Single-character tokens
     LeftParen,
     RightParen,
     LeftBrace,
@@ -15,7 +15,7 @@ pub enum TokenType<'literal> {
     Slash,
     Star,
 
-    // One or two character tokens.
+    // One or two character tokens
     Bang,
     BangEqual,
     Equal,
@@ -25,12 +25,12 @@ pub enum TokenType<'literal> {
     Less,
     LessEqual,
 
-    // Literals.
+    // Literals
     Identifier,
     String(&'literal str),
     Number(f64),
 
-    // Keywords.
+    // Keywords
     And,
     Class,
     Else,
@@ -48,6 +48,7 @@ pub enum TokenType<'literal> {
     Var,
     While,
 
+    // Other
     Eof,
 }
 

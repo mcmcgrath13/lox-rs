@@ -2,43 +2,40 @@ use std::env;
 use std::fs;
 use std::io::{self, Write};
 
-mod token;
 mod scanner;
+mod token;
 
 use crate::scanner::Scanner;
 
 #[derive(Debug)]
 struct RunTime {
-    had_error: bool
+    had_error: bool,
+}
+
+pub(crate) fn error(line: usize, message: &str) {
+    report(line, "", message);
+}
+
+fn report(line: usize, location: &str, message: &str) {
+    eprintln!("[line {}] Error{}: {}", line, location, message);
 }
 
 impl RunTime {
     fn new() -> RunTime {
-        RunTime {
-            had_error: false,
-        }
+        RunTime { had_error: false }
     }
 
-    fn run(&self, code: &String) {
+    fn run(&mut self, code: &String) {
         let mut scanner = Scanner::new(code);
-        scanner.scan_tokens();
-        for token in scanner.tokens {
+        let tokens = scanner.scan_tokens();
+        for token in tokens {
             println!("{}", token);
         }
     }
 
-    // TODO: use Result instead of passing this function around
-    fn error(&mut self, line: u64, message: &String) {
-        self.report(line, &String::new(), message);
-        self.had_error = true;
-    }
-
-    fn report(&self, line: u64, location: &String, message: &String) {
-        eprintln!("[line {}] Error{}: {}", line, location, message);
-    }
-
-    pub fn run_file(&self, file_path: &String) {
-        let code: String = fs::read_to_string(file_path).expect("Should have been able to read the file");
+    pub fn run_file(&mut self, file_path: &String) {
+        let code: String =
+            fs::read_to_string(file_path).expect("Should have been able to read the file");
         self.run(&code);
     }
 
@@ -47,8 +44,12 @@ impl RunTime {
         loop {
             print!("> ");
             io::stdout().flush().unwrap();
-            io::stdin().read_line(&mut code).expect("Failed to read line");
-            if code.is_empty() {break};
+            io::stdin()
+                .read_line(&mut code)
+                .expect("Failed to read line");
+            if code.is_empty() {
+                break;
+            };
             self.run(&code);
             code.clear();
             self.had_error = false;
@@ -56,16 +57,13 @@ impl RunTime {
     }
 }
 
-
 fn main() {
     let args: Vec<String> = env::args().collect();
     let mut rt = RunTime::new();
-    if args.len() > 2 {
-        println!("Usage: lox-rs [script]");
-    } else if args.len() == 2 {
-        rt.run_file(&args[1]);
-    } else {
-        rt.run_prompt();
+    match args.len() {
+        3.. => println!("Usage: lox-rs [script]"),
+        2 => rt.run_file(&args[1]),
+        _ => rt.run_prompt(),
     }
 
     if rt.had_error {

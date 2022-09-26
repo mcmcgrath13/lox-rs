@@ -12,14 +12,6 @@ struct RunTime {
     had_error: bool,
 }
 
-pub(crate) fn error(line: usize, message: &str) {
-    report(line, "", message);
-}
-
-fn report(line: usize, location: &str, message: &str) {
-    eprintln!("[line {}] Error{}: {}", line, location, message);
-}
-
 impl RunTime {
     fn new() -> RunTime {
         RunTime { had_error: false }
@@ -27,10 +19,27 @@ impl RunTime {
 
     fn run(&mut self, code: &String) {
         let mut scanner = Scanner::new(code);
-        let tokens = scanner.scan_tokens();
+
+        let (tokens, errs) = scanner.scan_tokens();
+        for err in errs {
+            let (line, msg) = err;
+            self.error(line, &msg)
+        }
         for token in tokens {
             println!("{}", token);
         }
+        // parse the tokens
+        // type infer the parse
+        // do environment
+    }
+
+    fn error(&mut self, line: usize, message: &str) {
+        self.report(line, "", message);
+        self.had_error = true;
+    }
+
+    fn report(&self, line: usize, location: &str, message: &str) {
+        eprintln!("[line {}] Error{}: {}", line, location, message);
     }
 
     pub fn run_file(&mut self, file_path: &String) {

@@ -1,6 +1,5 @@
 use std::str::FromStr;
 
-use crate::error;
 use crate::token::{Token, TokenType};
 
 pub struct Scanner<'code> {
@@ -11,6 +10,7 @@ pub struct Scanner<'code> {
     line: usize,
 }
 
+// Can't have a constant hashmap, so use a slice of pairs and then search over it
 const KEYWORDS: &[(&str, TokenType)] = &[
     ("and", TokenType::And),
     ("class", TokenType::Class),
@@ -30,7 +30,7 @@ const KEYWORDS: &[(&str, TokenType)] = &[
     ("while", TokenType::While),
 ];
 
-// Use binary search to access the map:
+// Use binary search to access the map
 fn get_keyword(key: &str) -> Result<TokenType, usize> {
     KEYWORDS
         .binary_search_by(|(k, _)| k.cmp(&key))
@@ -60,10 +60,14 @@ impl<'code> Scanner<'code> {
         }
     }
 
-    pub fn scan_tokens(&mut self) -> &Vec<Token> {
-        // TODO make this just stash the errors and return all at once instead of immediately
-        while !self.is_at_end() {
-            self.scan_token();
+    pub fn scan_tokens(&mut self) -> (&Vec<Token>, Vec<(usize, String)>) {
+        let mut errs = Vec::new();
+        loop {
+            match self.scan_token() {
+                Err(msg) => errs.push((self.line, msg)),
+                Ok(Some(_)) => continue,
+                Ok(None) => break,
+            }
         }
 
         self.tokens.push(Token {
@@ -72,10 +76,13 @@ impl<'code> Scanner<'code> {
             line: self.line,
         });
 
-        &self.tokens
+        (&self.tokens, errs)
     }
 
-    fn scan_token(&mut self) {
+    fn scan_token(&mut self) -> Result<Option<()>, String> {
+        if self.is_at_end() {
+            return Ok(None);
+        }
         self.start = self.current;
         let c = self.advance();
         match c {
@@ -142,7 +149,7 @@ impl<'code> Scanner<'code> {
             "\r" => {}
 
             // literals
-            "\"" => self.string(),
+            "\"" => return self.string(),
 
             // ruh roh
             _ => {
@@ -151,10 +158,12 @@ impl<'code> Scanner<'code> {
                 } else if is_alpha(c) {
                     self.identifier();
                 } else {
-                    error(self.line, "Unexpected character");
+                    return Err("Unexpected character".to_string());
                 }
             }
         }
+
+        Ok(Some(()))
     }
 
     // HELPER FUNCTIONS
@@ -230,7 +239,7 @@ impl<'code> Scanner<'code> {
         self.get_char(self.next_char(self.current))
     }
 
-    fn string(&mut self) {
+    fn string(&mut self) -> Result<Option<()>, String> {
         while self.peek() != "\"" && !self.is_at_end() {
             if self.peek() == "\n" {
                 self.line += 1
@@ -239,13 +248,15 @@ impl<'code> Scanner<'code> {
         }
 
         if self.is_at_end() {
-            error(self.line, "Unterminated string");
+            return Err("Unterminated string".to_string());
         }
 
         self.advance();
         self.add_token(TokenType::String(
             &self.source[self.next_char(self.start)..self.offset_char(self.current, -1)],
         ));
+
+        Ok(Some(()))
     }
 
     fn number(&mut self) {

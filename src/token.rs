@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::PrettyPrinting;
+
 #[derive(Copy, Clone, Debug)]
 pub enum TokenType<'literal> {
     // Single-character tokens
@@ -72,5 +74,16 @@ pub struct Token<'code> {
 impl fmt::Display for Token<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "[{}] {} {}", self.line, self.t, self.lexeme)
+    }
+}
+
+impl PrettyPrinting for Token<'_> {
+    fn print(&self) -> String {
+        match self.t {
+            TokenType::Nil => "nil".to_string(),
+            TokenType::Number(v) => format!("{}", v),
+            TokenType::String(v) => v.to_string(),
+            _ => self.lexeme.to_string(),
+        }
     }
 }

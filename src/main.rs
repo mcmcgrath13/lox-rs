@@ -2,8 +2,13 @@ use std::env;
 use std::fs;
 use std::io::{self, Write};
 
+mod ast;
 mod scanner;
 mod token;
+
+pub trait PrettyPrinting {
+    fn print(&self) -> String;
+}
 
 use crate::scanner::Scanner;
 

@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
 use crate::token::{Token, TokenType};
+use crate::Reportable;
 
 pub struct Scanner<'code> {
     source: &'code String,
@@ -8,6 +9,23 @@ pub struct Scanner<'code> {
     start: usize,
     current: usize,
     line: usize,
+}
+
+pub struct ScanError {
+    line: usize,
+    message: String,
+}
+
+impl ScanError {
+    pub fn new(line: usize, message: String) -> Self {
+        Self { line, message }
+    }
+}
+
+impl Reportable for ScanError {
+    fn report(&self) {
+        eprintln!("[line {}] Error (Scanner): {}", self.line, self.message);
+    }
 }
 
 // Can't have a constant hashmap, so use a slice of pairs and then search over it
@@ -60,11 +78,11 @@ impl<'code> Scanner<'code> {
         }
     }
 
-    pub fn scan_tokens(&mut self) -> (&Vec<Token>, Vec<(usize, String)>) {
+    pub fn scan_tokens(&mut self) -> (&Vec<Token>, Vec<ScanError>) {
         let mut errs = Vec::new();
         loop {
             match self.scan_token() {
-                Err(msg) => errs.push((self.line, msg)),
+                Err(msg) => errs.push(ScanError::new(self.line, msg)),
                 Ok(Some(_)) => continue,
                 Ok(None) => break,
             }

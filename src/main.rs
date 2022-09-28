@@ -3,6 +3,7 @@ use std::fs;
 use std::io::{self, Write};
 
 mod ast;
+mod parser;
 mod scanner;
 mod token;
 
@@ -10,6 +11,11 @@ pub trait PrettyPrinting {
     fn print(&self) -> String;
 }
 
+pub trait Reportable {
+    fn report(&self);
+}
+
+use crate::parser::Parser;
 use crate::scanner::Scanner;
 
 #[derive(Debug)]
@@ -23,28 +29,36 @@ impl RunTime {
     }
 
     fn run(&mut self, code: &String) {
+        // scanning phase
         let mut scanner = Scanner::new(code);
+        let (tokens, scan_errs) = scanner.scan_tokens();
+        for err in scan_errs {
+            self.error(err)
+        }
 
-        let (tokens, errs) = scanner.scan_tokens();
-        for err in errs {
-            let (line, msg) = err;
-            self.error(line, &msg)
+        // parsing phase
+        let mut parser = Parser::new(tokens);
+        let (ast, parse_errs) = parser.parse();
+        for err in parse_errs {
+            self.error(err)
         }
-        for token in tokens {
-            println!("{}", token);
+
+        // short circuit at this point if we've had errors
+        if self.had_error {
+            println!("we had an error!");
+            return;
         }
-        // parse the tokens
+
+        println!("{}", ast.expect("No errors, but no ast either").print());
+
         // type infer the parse
         // do environment
+        // ...
     }
 
-    fn error(&mut self, line: usize, message: &str) {
-        self.report(line, "", message);
+    fn error(&mut self, err: impl Reportable) {
+        err.report();
         self.had_error = true;
-    }
-
-    fn report(&self, line: usize, location: &str, message: &str) {
-        eprintln!("[line {}] Error{}: {}", line, location, message);
     }
 
     pub fn run_file(&mut self, file_path: &String) {

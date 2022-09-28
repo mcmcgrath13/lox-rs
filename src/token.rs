@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::PrettyPrinting;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TokenType<'literal> {
     // Single-character tokens
     LeftParen,
@@ -64,6 +64,7 @@ impl fmt::Display for TokenType<'_> {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Token<'code> {
     pub t: TokenType<'code>,
     pub lexeme: &'code str,
@@ -80,9 +81,7 @@ impl fmt::Display for Token<'_> {
 impl PrettyPrinting for Token<'_> {
     fn print(&self) -> String {
         match self.t {
-            TokenType::Nil => "nil".to_string(),
             TokenType::Number(v) => format!("{}", v),
-            TokenType::String(v) => v.to_string(),
             _ => self.lexeme.to_string(),
         }
     }

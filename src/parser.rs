@@ -48,6 +48,9 @@ impl<'code> Parser<'code> {
         }
     }
 
+    // Recursive descent methods:
+    // expression -> equality -> comparison -> term -> factor -> unary -> primary
+
     fn expression(&mut self) -> Result<Expr<'code>, ParseError> {
         self.equality()
     }
@@ -167,6 +170,8 @@ impl<'code> Parser<'code> {
         ))
     }
 
+    // Helper methods for traversing the tokens
+
     fn is_at_end(&self) -> bool {
         self.peek().t == TokenType::Eof
     }
@@ -203,5 +208,29 @@ impl<'code> Parser<'code> {
         }
 
         None
+    }
+
+    // Error handling
+
+    fn synchronize(&mut self) {
+        self.advance();
+
+        while !self.is_at_end() {
+            if self.previous().t == TokenType::Semicolon {
+                return;
+            }
+
+            match self.peek().t {
+                TokenType::Class
+                | TokenType::Fun
+                | TokenType::Var
+                | TokenType::For
+                | TokenType::If
+                | TokenType::While
+                | TokenType::Print
+                | TokenType::Return => return,
+                _ => self.advance(),
+            };
+        }
     }
 }

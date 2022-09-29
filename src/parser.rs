@@ -42,10 +42,13 @@ impl<'code> Parser<'code> {
         let mut statements = Vec::new();
 
         loop {
-            match self.statement() {
+            match self.declaration() {
                 Ok(Some(s)) => statements.push(s),
                 Ok(None) => break,
-                Err(e) => errs.push(e),
+                Err(e) => {
+                    self.synchronize();
+                    errs.push(e)
+                }
             }
         }
 
@@ -53,30 +56,26 @@ impl<'code> Parser<'code> {
     }
 
     // Recursive descent methods:
-    // statement -> expression -> equality -> comparison -> term -> factor -> unary -> primary
+    // declaration -> statement -> expression -> equality -> comparison -> term -> factor -> unary -> primary
 
-    fn statement(&mut self) -> Result<Option<Stmt<'code>>, ParseError> {
+    fn declaration(&mut self) -> Result<Option<Stmt<'code>>, ParseError> {
         if self.is_at_end() {
             return Ok(None);
         };
 
-        if self.match_next(&[TokenType::Print]).is_some() {
-            return Ok(Some(self.print_statement()?));
+        if self.match_next(&[TokenType::Var]).is_some() {
+            return Ok(Some(self.var_declaration()?));
         }
 
-        Ok(Some(self.expression_statement()?))
+        Ok(Some(self.statement()?))
     }
 
-    fn print_statement(&mut self) -> Result<Stmt<'code>, ParseError> {
-        let expression = self.expression()?;
-        self.consume(TokenType::Semicolon, "expect ';' after value")?;
-        Ok(Stmt::Print { expression })
-    }
+    fn statement(&mut self) -> Result<Stmt<'code>, ParseError> {
+        if self.match_next(&[TokenType::Print]).is_some() {
+            return self.print_statement();
+        }
 
-    fn expression_statement(&mut self) -> Result<Stmt<'code>, ParseError> {
-        let expression = self.expression()?;
-        self.consume(TokenType::Semicolon, "expect ';' after value")?;
-        Ok(Stmt::Expression { expression })
+        self.expression_statement()
     }
 
     fn expression(&mut self) -> Result<Expr<'code>, ParseError> {
@@ -181,10 +180,43 @@ impl<'code> Parser<'code> {
             return Ok(Expr::Grouping { expression });
         };
 
+        if let Some(name) = self.match_next(&[TokenType::Identifier]) {
+            return Ok(Expr::Variable { name });
+        }
+
         Err(ParseError::from_token(
             &self.peek(),
             "Unterminated expression",
         ))
+    }
+
+    // statement parsing helpers
+    fn var_declaration(&mut self) -> Result<Stmt<'code>, ParseError> {
+        let name = self.consume(TokenType::Identifier, "expect variable name")?;
+
+        let mut initializer = None;
+        if self.match_next(&[TokenType::Equal]).is_some() {
+            initializer = Some(self.expression()?);
+        }
+
+        self.consume(
+            TokenType::Semicolon,
+            "expect ';' after variable declaration",
+        )?;
+        
+        Ok(Stmt::Var { name, initializer })
+    }
+
+    fn print_statement(&mut self) -> Result<Stmt<'code>, ParseError> {
+        let expression = self.expression()?;
+        self.consume(TokenType::Semicolon, "expect ';' after value")?;
+        Ok(Stmt::Print { expression })
+    }
+
+    fn expression_statement(&mut self) -> Result<Stmt<'code>, ParseError> {
+        let expression = self.expression()?;
+        self.consume(TokenType::Semicolon, "expect ';' after value")?;
+        Ok(Stmt::Expression { expression })
     }
 
     // Helper methods for traversing the tokens
@@ -227,9 +259,9 @@ impl<'code> Parser<'code> {
         None
     }
 
-    fn consume(&mut self, t: TokenType, message: impl AsRef<str>) -> Result<(), ParseError> {
+    fn consume(&mut self, t: TokenType, message: impl AsRef<str>) -> Result<Token, ParseError> {
         match self.match_next(&[t]) {
-            Some(_) => Ok(()),
+            Some(t) => Ok(t),
             None => Err(ParseError::from_token(&self.peek(), message)),
         }
     }

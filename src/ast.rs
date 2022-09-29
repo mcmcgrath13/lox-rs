@@ -7,15 +7,18 @@ pub enum Expr<'a> {
         right: Box<Expr<'a>>,
         op: Token<'a>,
     },
-    Unary {
-        right: Box<Expr<'a>>,
-        op: Token<'a>,
-    },
     Grouping {
         expression: Box<Expr<'a>>,
     },
     Literal {
         value: Token<'a>,
+    },
+    Unary {
+        right: Box<Expr<'a>>,
+        op: Token<'a>,
+    },
+    Variable {
+        name: Token<'a>,
     },
 }
 
@@ -28,13 +31,22 @@ impl PrettyPrinting for Expr<'_> {
             Expr::Unary { right, op } => format!("({} {})", op.print(), right.print()),
             Expr::Grouping { expression } => format!("(group {})", expression.print()),
             Expr::Literal { value } => value.print(),
+            Expr::Variable { name } => name.print(),
         }
     }
 }
 
 pub enum Stmt<'a> {
-    Expression { expression: Expr<'a> },
-    Print { expression: Expr<'a> },
+    Expression {
+        expression: Expr<'a>,
+    },
+    Print {
+        expression: Expr<'a>,
+    },
+    Var {
+        name: Token<'a>,
+        initializer: Option<Expr<'a>>,
+    },
 }
 
 // TODO: JUST USE FMT::DISPLAY
@@ -45,6 +57,10 @@ impl PrettyPrinting for Stmt<'_> {
                 format!("(print {} )", expression.print())
             }
             Stmt::Expression { expression } => format!("(; {})", expression.print()),
+            Stmt::Var { name, initializer } => match initializer {
+                Some(v) => format!("(var {} {})", name.print(), v.print()),
+                None => format!("(var {})", name.print()),
+            },
         }
     }
 }

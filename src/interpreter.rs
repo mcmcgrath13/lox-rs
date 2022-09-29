@@ -1,9 +1,11 @@
 use std::fmt;
 
 use crate::ast::{Expr, Stmt};
+use crate::environment::Environment;
 use crate::token::{Token, TokenType};
 use crate::Reportable;
 
+#[derive(Debug, Clone)]
 pub enum LoxValue {
     Boolean(bool),
     Nil,
@@ -76,14 +78,18 @@ impl Reportable for InterpreterError {
 }
 
 #[derive(Debug)]
-pub struct Interpreter {}
+pub struct Interpreter {
+    environment: Environment,
+}
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            environment: Environment::new(None),
+        }
     }
 
-    pub fn interpret(&self, stmts: Vec<Stmt>) -> Result<(), InterpreterError> {
+    pub fn interpret(&mut self, stmts: Vec<Stmt>) -> Result<(), InterpreterError> {
         for stmt in stmts {
             self.execute(stmt)?;
         }
@@ -91,7 +97,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn execute(&self, stmt: Stmt) -> Result<LoxValue, InterpreterError> {
+    fn execute(&mut self, stmt: Stmt) -> Result<LoxValue, InterpreterError> {
         match stmt {
             Stmt::Print { expression } => {
                 let value = self.evaluate(expression)?;
@@ -99,6 +105,15 @@ impl Interpreter {
                 Ok(value)
             }
             Stmt::Expression { expression } => self.evaluate(expression),
+            Stmt::Var { name, initializer } => {
+                let mut value = LoxValue::Nil;
+                if let Some(expr) = initializer {
+                    value = self.evaluate(expr)?;
+                }
+
+                self.environment.define(&name, value);
+                Ok(LoxValue::Nil)
+            }
         }
     }
 
@@ -213,6 +228,10 @@ impl Interpreter {
                 }
             }
             Expr::Grouping { expression } => self.evaluate(*expression),
+            Expr::Variable { name } => match self.environment.get(&name) {
+                Some(value) => Ok(value),
+                None => Err(InterpreterError::from_token(&name, "Unknown variable")),
+            },
         }
     }
 }

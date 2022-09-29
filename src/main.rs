@@ -3,6 +3,7 @@ use std::fs;
 use std::io::{self, Write};
 
 mod ast;
+mod environment;
 mod interpreter;
 mod parser;
 mod scanner;

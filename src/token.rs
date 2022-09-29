@@ -71,7 +71,6 @@ pub struct Token<'code> {
     pub line: usize,
 }
 
-// TODO: fix this
 impl fmt::Display for Token<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "[{}] {} {}", self.line, self.t, self.lexeme)

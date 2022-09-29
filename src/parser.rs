@@ -58,7 +58,7 @@ impl<'code> Parser<'code> {
     fn equality(&mut self) -> Result<Expr<'code>, ParseError> {
         let mut expr = self.comparison()?;
 
-        while let Some(op) = self.match_next(&[TokenType::Bang, TokenType::BangEqual]) {
+        while let Some(op) = self.match_next(&[TokenType::EqualEqual, TokenType::BangEqual]) {
             let right = Box::new(self.comparison()?);
             expr = Expr::Binary {
                 left: Box::new(expr),
@@ -126,14 +126,13 @@ impl<'code> Parser<'code> {
                 let right = Box::new(self.unary()?);
                 Ok(Expr::Unary { op, right })
             }
-            None => Ok(self.primary()?),
+            None => self.primary(),
         }
     }
 
     fn primary(&mut self) -> Result<Expr<'code>, ParseError> {
-        match self.match_next(&[TokenType::False, TokenType::True, TokenType::Nil]) {
-            Some(value) => return Ok(Expr::Literal { value }),
-            None => {}
+        if let Some(value) = self.match_next(&[TokenType::False, TokenType::True, TokenType::Nil]) {
+            return Ok(Expr::Literal { value });
         }
 
         // special handling for number and string due to the enum value
@@ -148,20 +147,17 @@ impl<'code> Parser<'code> {
             }
         }
 
-        match self.match_next(&[TokenType::LeftParen]) {
-            Some(left_paren) => {
-                let expression = Box::new(self.expression()?);
-                match self.match_next(&[TokenType::RightParen]) {
-                    Some(_) => return Ok(Expr::Grouping { expression }),
-                    None => {
-                        return Err(ParseError::from_token(
-                            &left_paren,
-                            "no matching right paren".to_string(),
-                        ))
-                    }
-                };
-            }
-            None => {}
+        if let Some(left_paren) = self.match_next(&[TokenType::LeftParen]) {
+            let expression = Box::new(self.expression()?);
+            match self.match_next(&[TokenType::RightParen]) {
+                Some(_) => return Ok(Expr::Grouping { expression }),
+                None => {
+                    return Err(ParseError::from_token(
+                        &left_paren,
+                        "no matching right paren".to_string(),
+                    ))
+                }
+            };
         };
 
         Err(ParseError::from_token(

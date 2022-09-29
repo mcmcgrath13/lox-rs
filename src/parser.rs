@@ -1,4 +1,4 @@
-use crate::ast::Expr;
+use crate::ast::{Expr, Stmt};
 use crate::token::{Token, TokenType};
 use crate::Reportable;
 
@@ -37,19 +37,47 @@ impl<'code> Parser<'code> {
         Parser { tokens, current: 0 }
     }
 
-    pub fn parse(&mut self) -> (Option<Expr<'code>>, Vec<ParseError>) {
+    pub fn parse(&mut self) -> (Vec<Stmt<'code>>, Vec<ParseError>) {
         let mut errs = Vec::new();
-        match self.expression() {
-            Ok(e) => (Some(e), errs),
-            Err(e) => {
-                errs.push(e);
-                (None, errs)
+        let mut statements = Vec::new();
+
+        loop {
+            match self.statement() {
+                Ok(Some(s)) => statements.push(s),
+                Ok(None) => break,
+                Err(e) => errs.push(e),
             }
         }
+
+        (statements, errs)
     }
 
     // Recursive descent methods:
-    // expression -> equality -> comparison -> term -> factor -> unary -> primary
+    // statement -> expression -> equality -> comparison -> term -> factor -> unary -> primary
+
+    fn statement(&mut self) -> Result<Option<Stmt<'code>>, ParseError> {
+        if self.is_at_end() {
+            return Ok(None);
+        };
+
+        if self.match_next(&[TokenType::Print]).is_some() {
+            return Ok(Some(self.print_statement()?));
+        }
+
+        Ok(Some(self.expression_statement()?))
+    }
+
+    fn print_statement(&mut self) -> Result<Stmt<'code>, ParseError> {
+        let expression = self.expression()?;
+        self.consume(TokenType::Semicolon, "expect ';' after value")?;
+        Ok(Stmt::Print { expression })
+    }
+
+    fn expression_statement(&mut self) -> Result<Stmt<'code>, ParseError> {
+        let expression = self.expression()?;
+        self.consume(TokenType::Semicolon, "expect ';' after value")?;
+        Ok(Stmt::Expression { expression })
+    }
 
     fn expression(&mut self) -> Result<Expr<'code>, ParseError> {
         self.equality()
@@ -147,17 +175,10 @@ impl<'code> Parser<'code> {
             }
         }
 
-        if let Some(left_paren) = self.match_next(&[TokenType::LeftParen]) {
+        if self.match_next(&[TokenType::LeftParen]).is_some() {
             let expression = Box::new(self.expression()?);
-            match self.match_next(&[TokenType::RightParen]) {
-                Some(_) => return Ok(Expr::Grouping { expression }),
-                None => {
-                    return Err(ParseError::from_token(
-                        &left_paren,
-                        "no matching right paren",
-                    ))
-                }
-            };
+            self.consume(TokenType::RightParen, "no matching right paren")?;
+            return Ok(Expr::Grouping { expression });
         };
 
         Err(ParseError::from_token(
@@ -204,6 +225,13 @@ impl<'code> Parser<'code> {
         }
 
         None
+    }
+
+    fn consume(&mut self, t: TokenType, message: impl AsRef<str>) -> Result<(), ParseError> {
+        match self.match_next(&[t]) {
+            Some(_) => Ok(()),
+            None => Err(ParseError::from_token(&self.peek(), message)),
+        }
     }
 
     // Error handling

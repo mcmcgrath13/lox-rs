@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::ast::Expr;
+use crate::ast::{Expr, Stmt};
 use crate::token::{Token, TokenType};
 use crate::Reportable;
 
@@ -83,11 +83,30 @@ impl Interpreter {
         Self {}
     }
 
-    pub fn interpret(&self, expr: Expr) -> Result<LoxValue, InterpreterError> {
+    pub fn interpret(&self, stmts: Vec<Stmt>) -> Result<(), InterpreterError> {
+        for stmt in stmts {
+            self.execute(stmt)?;
+        }
+
+        Ok(())
+    }
+
+    fn execute(&self, stmt: Stmt) -> Result<LoxValue, InterpreterError> {
+        match stmt {
+            Stmt::Print { expression } => {
+                let value = self.evaluate(expression)?;
+                println!("{}", value);
+                Ok(value)
+            }
+            Stmt::Expression { expression } => self.evaluate(expression),
+        }
+    }
+
+    fn evaluate(&self, expr: Expr) -> Result<LoxValue, InterpreterError> {
         match expr {
             Expr::Literal { value } => (&value).try_into(),
             Expr::Unary { op, right } => {
-                let right_val = self.interpret(*right)?;
+                let right_val = self.evaluate(*right)?;
                 match (op.t, right_val) {
                     (TokenType::Minus, LoxValue::Number(n)) => Ok(LoxValue::Number(-1.0 * n)),
                     (TokenType::Minus, _) => Err(InterpreterError::from_token(
@@ -104,8 +123,8 @@ impl Interpreter {
                 }
             }
             Expr::Binary { left, right, op } => {
-                let left_val = self.interpret(*left)?;
-                let right_val = self.interpret(*right)?;
+                let left_val = self.evaluate(*left)?;
+                let right_val = self.evaluate(*right)?;
 
                 match (op.t, left_val, right_val) {
                     // subtraction
@@ -193,7 +212,7 @@ impl Interpreter {
                     _ => Err(InterpreterError::from_token(&op, "Unknown binary operator")),
                 }
             }
-            Expr::Grouping { expression } => self.interpret(*expression),
+            Expr::Grouping { expression } => self.evaluate(*expression),
         }
     }
 }

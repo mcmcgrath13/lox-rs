@@ -32,6 +32,23 @@ impl PrettyPrinting for Expr<'_> {
     }
 }
 
+pub enum Stmt<'a> {
+    Expression { expression: Expr<'a> },
+    Print { expression: Expr<'a> },
+}
+
+// TODO: JUST USE FMT::DISPLAY
+impl PrettyPrinting for Stmt<'_> {
+    fn print(&self) -> String {
+        match self {
+            Stmt::Print { expression } => {
+                format!("(print {} )", expression.print())
+            }
+            Stmt::Expression { expression } => format!("(; {})", expression.print()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     // Note this useful idiom: importing names from outer (for mod tests) scope.

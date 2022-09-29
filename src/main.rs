@@ -49,7 +49,7 @@ impl RunTime {
 
         // parsing phase
         let mut parser = Parser::new(tokens);
-        let (result, parse_errs) = parser.parse();
+        let (ast, parse_errs) = parser.parse();
         for err in parse_errs {
             self.error(err)
         }
@@ -60,14 +60,11 @@ impl RunTime {
             return;
         }
 
-        if let Some(ast) = result {
-            println!("{}", ast.print());
-            match self.interpreter.interpret(ast) {
-                Ok(v) => println!("{}", v),
-                Err(err) => {
-                    self.runtime_error(err);
-                }
-            }
+        for stmt in &ast {
+            println!("{}", stmt.print());
+        }
+        if let Err(err) = self.interpreter.interpret(ast) {
+            self.runtime_error(err);
         }
 
         // type infer the parse

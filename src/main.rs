@@ -3,6 +3,7 @@ use std::fs;
 use std::io::{self, Write};
 
 mod ast;
+mod interpreter;
 mod parser;
 mod scanner;
 mod token;
@@ -15,17 +16,24 @@ pub trait Reportable {
     fn report(&self);
 }
 
+use crate::interpreter::Interpreter;
 use crate::parser::Parser;
 use crate::scanner::Scanner;
 
 #[derive(Debug)]
 struct RunTime {
     had_error: bool,
+    had_runtime_error: bool,
+    interpreter: Interpreter,
 }
 
 impl RunTime {
     fn new() -> RunTime {
-        RunTime { had_error: false }
+        RunTime {
+            had_error: false,
+            had_runtime_error: false,
+            interpreter: Interpreter::new(),
+        }
     }
 
     fn run(&mut self, code: &String) {
@@ -35,10 +43,13 @@ impl RunTime {
         for err in scan_errs {
             self.error(err)
         }
+        for token in tokens {
+            println!("{}", token)
+        }
 
         // parsing phase
         let mut parser = Parser::new(tokens);
-        let (ast, parse_errs) = parser.parse();
+        let (result, parse_errs) = parser.parse();
         for err in parse_errs {
             self.error(err)
         }
@@ -49,7 +60,15 @@ impl RunTime {
             return;
         }
 
-        println!("{}", ast.expect("No errors, but no ast either").print());
+        if let Some(ast) = result {
+            println!("{}", ast.print());
+            match self.interpreter.interpret(ast) {
+                Ok(v) => println!("{}", v),
+                Err(err) => {
+                    self.runtime_error(err);
+                }
+            }
+        }
 
         // type infer the parse
         // do environment
@@ -59,6 +78,11 @@ impl RunTime {
     fn error(&mut self, err: impl Reportable) {
         err.report();
         self.had_error = true;
+    }
+
+    fn runtime_error(&mut self, err: impl Reportable) {
+        err.report();
+        self.had_runtime_error = true;
     }
 
     pub fn run_file(&mut self, file_path: &String) {
@@ -81,6 +105,7 @@ impl RunTime {
             self.run(&code);
             code.clear();
             self.had_error = false;
+            self.had_runtime_error = false;
         }
     }
 }
@@ -94,6 +119,9 @@ fn main() {
         _ => rt.run_prompt(),
     }
 
+    if rt.had_runtime_error {
+        std::process::exit(70)
+    }
     if rt.had_error {
         std::process::exit(65)
     }

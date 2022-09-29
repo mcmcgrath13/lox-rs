@@ -17,8 +17,11 @@ pub struct ScanError {
 }
 
 impl ScanError {
-    pub fn new(line: usize, message: String) -> Self {
-        Self { line, message }
+    pub fn new(line: usize, message: impl AsRef<str>) -> Self {
+        Self {
+            line,
+            message: message.as_ref().to_string(),
+        }
     }
 }
 
@@ -82,7 +85,7 @@ impl<'code> Scanner<'code> {
         let mut errs = Vec::new();
         loop {
             match self.scan_token() {
-                Err(msg) => errs.push(ScanError::new(self.line, msg)),
+                Err(err) => errs.push(err),
                 Ok(Some(_)) => continue,
                 Ok(None) => break,
             }
@@ -97,7 +100,7 @@ impl<'code> Scanner<'code> {
         (&self.tokens, errs)
     }
 
-    fn scan_token(&mut self) -> Result<Option<()>, String> {
+    fn scan_token(&mut self) -> Result<Option<()>, ScanError> {
         if self.is_at_end() {
             return Ok(None);
         }
@@ -176,7 +179,8 @@ impl<'code> Scanner<'code> {
                 } else if is_alpha(c) {
                     self.identifier();
                 } else {
-                    return Err("Unexpected character".to_string());
+                    let message = format!("Unexpected character: {}", c);
+                    return Err(self.error(message));
                 }
             }
         }
@@ -214,7 +218,9 @@ impl<'code> Scanner<'code> {
     }
 
     fn is_at_end(&self) -> bool {
-        self.current >= self.source.len()
+        let length = self.source.len();
+        self.current >= length
+            || (self.current == length - 1 && self.get_char(self.current) == "\n")
     }
 
     fn get_char(&self, i: usize) -> &str {
@@ -257,7 +263,7 @@ impl<'code> Scanner<'code> {
         self.get_char(self.next_char(self.current))
     }
 
-    fn string(&mut self) -> Result<Option<()>, String> {
+    fn string(&mut self) -> Result<Option<()>, ScanError> {
         while self.peek() != "\"" && !self.is_at_end() {
             if self.peek() == "\n" {
                 self.line += 1
@@ -266,7 +272,7 @@ impl<'code> Scanner<'code> {
         }
 
         if self.is_at_end() {
-            return Err("Unterminated string".to_string());
+            return Err(self.error("Unterminated string"));
         }
 
         self.advance();
@@ -315,5 +321,9 @@ impl<'code> Scanner<'code> {
             lexeme,
             line: self.line,
         })
+    }
+
+    fn error(&self, msg: impl AsRef<str>) -> ScanError {
+        ScanError::new(self.line, msg)
     }
 }

@@ -4,36 +4,50 @@ use crate::interpreter::LoxValue;
 use crate::token::Token;
 
 #[derive(Debug)]
-pub struct Environment {
+pub struct Environment<'e> {
     values: HashMap<String, LoxValue>,
-    parent: Option<Box<Environment>>,
+    pub enclosing: Option<&'e mut Environment<'e>>,
 }
 
-impl Environment {
-    pub fn new(parent: Option<Environment>) -> Self {
-        match parent {
+impl<'e> Environment<'e> {
+    pub fn new(enclosing: Option<&'e mut Environment<'e>>) -> Self {
+        match enclosing {
             Some(e) => Environment {
                 values: HashMap::new(),
-                parent: Some(Box::new(e)),
+                enclosing: Some(e),
             },
             None => Environment {
                 values: HashMap::new(),
-                parent: None,
+                enclosing: None,
             },
         }
     }
 
     pub fn define(&mut self, name: &Token, value: LoxValue) {
-        self.values.insert(name.lexeme.to_string(), value);
+        self.values.insert(name.lexeme.clone(), value);
     }
 
     pub fn get(&self, name: &Token) -> Option<LoxValue> {
-        match self.values.get(&name.lexeme.to_string()) {
+        match self.values.get(&name.lexeme) {
             Some(v) => Some(v.clone()),
-            None => match &self.parent {
+            None => match &self.enclosing {
                 Some(e) => e.get(name),
                 None => None,
             },
         }
+    }
+
+    pub fn assign(&mut self, name: &Token, value: LoxValue) -> Option<LoxValue> {
+        if self.values.contains_key(&name.lexeme) {
+            return match self.values.insert(name.lexeme.clone(), value.clone()) {
+                Some(v) => Some(v),
+                None => match &mut self.enclosing {
+                    Some(e) => e.assign(name, value),
+                    None => None,
+                },
+            };
+        }
+
+        None
     }
 }

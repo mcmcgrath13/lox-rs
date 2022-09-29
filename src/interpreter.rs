@@ -78,11 +78,11 @@ impl Reportable for InterpreterError {
 }
 
 #[derive(Debug)]
-pub struct Interpreter {
-    environment: Environment,
+pub struct Interpreter<'e> {
+    environment: Environment<'e>,
 }
 
-impl Interpreter {
+impl<'e> Interpreter<'e> {
     pub fn new() -> Self {
         Self {
             environment: Environment::new(None),
@@ -99,12 +99,24 @@ impl Interpreter {
 
     fn execute(&mut self, stmt: Stmt) -> Result<LoxValue, InterpreterError> {
         match stmt {
+            Stmt::Block { statements } => {
+                self.environment = Environment::new(Some(&mut self.environment));
+                for statement in statements {
+                    self.execute(*statement)?;
+                }
+                // should always be true given we construct the environment with an
+                // enclosing environment above
+                if let Some(e) = self.environment.enclosing {
+                    self.environment = e
+                }
+                Ok(LoxValue::Nil)
+            }
+            Stmt::Expression { expression } => self.evaluate(expression),
             Stmt::Print { expression } => {
                 let value = self.evaluate(expression)?;
                 println!("{}", value);
                 Ok(value)
             }
-            Stmt::Expression { expression } => self.evaluate(expression),
             Stmt::Var { name, initializer } => {
                 let mut value = LoxValue::Nil;
                 if let Some(expr) = initializer {
@@ -117,8 +129,15 @@ impl Interpreter {
         }
     }
 
-    fn evaluate(&self, expr: Expr) -> Result<LoxValue, InterpreterError> {
+    fn evaluate(&mut self, expr: Expr) -> Result<LoxValue, InterpreterError> {
         match expr {
+            Expr::Assign { name, value } => {
+                let v = self.evaluate(*value)?;
+                if self.environment.assign(&name, v.clone()).is_none() {
+                    return Err(InterpreterError::from_token(&name, "undefined variable"));
+                }
+                Ok(v)
+            }
             Expr::Literal { value } => (&value).try_into(),
             Expr::Unary { op, right } => {
                 let right_val = self.evaluate(*right)?;

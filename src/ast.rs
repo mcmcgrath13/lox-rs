@@ -3,10 +3,14 @@ use crate::PrettyPrinting;
 
 #[derive(Clone, Debug)]
 pub enum Expr {
+    Assign {
+        name: Token,
+        value: Box<Expr>,
+    },
     Binary {
         left: Box<Expr>,
-        right: Box<Expr>,
         op: Token,
+        right: Box<Expr>,
     },
     Grouping {
         expression: Box<Expr>,
@@ -15,8 +19,8 @@ pub enum Expr {
         value: Token,
     },
     Unary {
-        right: Box<Expr>,
         op: Token,
+        right: Box<Expr>,
     },
     Variable {
         name: Token,
@@ -26,6 +30,7 @@ pub enum Expr {
 impl PrettyPrinting for Expr {
     fn print(&self) -> String {
         match self {
+            Expr::Assign { name, value } => format!("(= {} {})", name.print(), value.print()),
             Expr::Binary { left, right, op } => {
                 format!("({} {} {})", op.print(), left.print(), right.print())
             }
@@ -38,6 +43,9 @@ impl PrettyPrinting for Expr {
 }
 
 pub enum Stmt {
+    Block {
+        statements: Vec<Box<Stmt>>,
+    },
     Expression {
         expression: Expr,
     },
@@ -54,10 +62,17 @@ pub enum Stmt {
 impl PrettyPrinting for Stmt {
     fn print(&self) -> String {
         match self {
+            Stmt::Block { statements } => {
+                let mut s = "(block".to_string();
+                for statement in statements {
+                    s = s + &format!(" {}", statement.print())
+                }
+                s
+            }
+            Stmt::Expression { expression } => format!("(; {})", expression.print()),
             Stmt::Print { expression } => {
                 format!("(print {} )", expression.print())
             }
-            Stmt::Expression { expression } => format!("(; {})", expression.print()),
             Stmt::Var { name, initializer } => match initializer {
                 Some(v) => format!("(var {} {})", name.print(), v.print()),
                 None => format!("(var {})", name.print()),

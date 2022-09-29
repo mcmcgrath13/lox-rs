@@ -22,14 +22,14 @@ use crate::parser::Parser;
 use crate::scanner::Scanner;
 
 #[derive(Debug)]
-struct RunTime {
+struct RunTime<'e> {
     had_error: bool,
     had_runtime_error: bool,
-    interpreter: Interpreter,
+    interpreter: Interpreter<'e>,
 }
 
-impl RunTime {
-    fn new() -> RunTime {
+impl<'e> RunTime<'e> {
+    fn new() -> RunTime<'e> {
         RunTime {
             had_error: false,
             had_runtime_error: false,

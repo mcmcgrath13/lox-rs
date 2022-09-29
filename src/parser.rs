@@ -56,7 +56,8 @@ impl<'code> Parser<'code> {
     }
 
     // Recursive descent methods:
-    // declaration -> statement -> expression -> equality -> comparison -> term -> factor -> unary -> primary
+    // declaration -> statement -> expression -> assignment -> equality -> ...
+    // ... comparison -> term -> factor -> unary -> primary
 
     fn declaration(&mut self) -> Result<Option<Stmt>, ParseError> {
         if self.is_at_end() {
@@ -75,11 +76,37 @@ impl<'code> Parser<'code> {
             return self.print_statement();
         }
 
+        if self.match_next(&[TokenType::LeftBrace]).is_some() {
+            return Ok(Stmt::Block { statements: self.block()? });
+        }
+
         self.expression_statement()
     }
 
     fn expression(&mut self) -> Result<Expr, ParseError> {
-        self.equality()
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> Result<Expr, ParseError> {
+        let expr = self.equality()?;
+
+        if self.match_next(&[TokenType::Equal]).is_some() {
+            let value = self.assignment()?;
+
+            if let Expr::Variable { name } = expr {
+                return Ok(Expr::Assign {
+                    name,
+                    value: Box::new(value),
+                });
+            }
+
+            return Err(ParseError::from_token(
+                self.previous(),
+                "Invalid assignment target",
+            ));
+        }
+
+        Ok(expr)
     }
 
     fn equality(&mut self) -> Result<Expr, ParseError> {
@@ -217,6 +244,21 @@ impl<'code> Parser<'code> {
         let expression = self.expression()?;
         self.consume(TokenType::Semicolon, "expect ';' after value")?;
         Ok(Stmt::Expression { expression })
+    }
+
+    fn block(&mut self) -> Result<Vec<Box<Stmt>>, ParseError> {
+        let statements = Vec::new();
+
+        while !self.check(&TokenType::RightBrace) {
+            match self.declaration()? {
+                None => break,
+                Some(s) => statements.push(Box::new(s))
+            }
+        }
+
+        self.consume(TokenType::RightBrace, "Expect '}' after block")?;
+
+        Ok(statements)
     }
 
     // Helper methods for traversing the tokens

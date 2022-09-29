@@ -14,11 +14,11 @@ pub struct ParseError {
 }
 
 impl ParseError {
-    pub fn from_token(token: &Token<'_>, message: String) -> Self {
+    pub fn from_token(token: &Token<'_>, message: impl AsRef<str>) -> Self {
         Self {
             line: token.line,
             lexeme: token.lexeme.to_string(),
-            message,
+            message: message.as_ref().to_string(),
         }
     }
 }
@@ -154,7 +154,7 @@ impl<'code> Parser<'code> {
                 None => {
                     return Err(ParseError::from_token(
                         &left_paren,
-                        "no matching right paren".to_string(),
+                        "no matching right paren",
                     ))
                 }
             };
@@ -162,7 +162,7 @@ impl<'code> Parser<'code> {
 
         Err(ParseError::from_token(
             &self.peek(),
-            "Unterminated expression".to_string(),
+            "Unterminated expression",
         ))
     }
 

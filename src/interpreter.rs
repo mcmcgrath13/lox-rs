@@ -34,10 +34,7 @@ impl TryFrom<&Token<'_>> for LoxValue {
             TokenType::False => Ok(Self::Boolean(false)),
             TokenType::Number(v) => Ok(Self::Number(v)),
             TokenType::String(v) => Ok(Self::String(v.to_string())),
-            _ => Err(InterpreterError::from_token(
-                value,
-                "Unexpected value".to_string(),
-            )),
+            _ => Err(InterpreterError::from_token(value, "Unexpected value")),
         }
     }
 }
@@ -60,11 +57,11 @@ pub struct InterpreterError {
 }
 
 impl InterpreterError {
-    pub fn from_token(token: &Token<'_>, message: String) -> Self {
+    pub fn from_token(token: &Token<'_>, message: impl AsRef<str>) -> Self {
         Self {
             line: token.line,
             location: token.lexeme.to_string(),
-            message,
+            message: message.as_ref().to_string(),
         }
     }
 }
@@ -95,18 +92,15 @@ impl Interpreter {
                     (TokenType::Minus, LoxValue::Number(n)) => Ok(LoxValue::Number(-1.0 * n)),
                     (TokenType::Minus, _) => Err(InterpreterError::from_token(
                         &op,
-                        "non-number with unary minus".to_string(),
+                        "non-number with unary minus",
                     )),
                     (TokenType::Bang, LoxValue::Boolean(b)) => Ok(LoxValue::Boolean(!b)),
                     (TokenType::Bang, LoxValue::Nil) => Ok(LoxValue::Boolean(true)), // nil is falsy
                     (TokenType::Bang, _) => Err(InterpreterError::from_token(
                         &op,
-                        "non-boolean with unary exclamation".to_string(),
+                        "non-boolean with unary exclamation",
                     )),
-                    _ => Err(InterpreterError::from_token(
-                        &op,
-                        "Unknown unary operator".to_string(),
-                    )),
+                    _ => Err(InterpreterError::from_token(&op, "Unknown unary operator")),
                 }
             }
             Expr::Binary { left, right, op } => {
@@ -120,7 +114,7 @@ impl Interpreter {
                     }
                     (TokenType::Minus, _, _) => Err(InterpreterError::from_token(
                         &op,
-                        "Subraction can only be done on numbers".to_string(),
+                        "Subraction can only be done on numbers",
                     )),
 
                     // division
@@ -129,7 +123,7 @@ impl Interpreter {
                     }
                     (TokenType::Slash, _, _) => Err(InterpreterError::from_token(
                         &op,
-                        "Division can only be done on numbers".to_string(),
+                        "Division can only be done on numbers",
                     )),
 
                     // multiplication
@@ -138,7 +132,7 @@ impl Interpreter {
                     }
                     (TokenType::Star, _, _) => Err(InterpreterError::from_token(
                         &op,
-                        "Multiplication can only be done on numbers".to_string(),
+                        "Multiplication can only be done on numbers",
                     )),
 
                     // addition
@@ -150,8 +144,7 @@ impl Interpreter {
                     }
                     (TokenType::Plus, _, _) => Err(InterpreterError::from_token(
                         &op,
-                        "The + operator can be used to add two numbers or two strings only"
-                            .to_string(),
+                        "The + operator can be used to add two numbers or two strings only",
                     )),
 
                     // greater than
@@ -160,7 +153,7 @@ impl Interpreter {
                     }
                     (TokenType::Greater, _, _) => Err(InterpreterError::from_token(
                         &op,
-                        "Greater than comparison can only be done on numbers".to_string(),
+                        "Greater than comparison can only be done on numbers",
                     )),
 
                     // greater than or equal
@@ -169,7 +162,7 @@ impl Interpreter {
                     }
                     (TokenType::GreaterEqual, _, _) => Err(InterpreterError::from_token(
                         &op,
-                        "Greater than or equal comparison can only be done on numbers".to_string(),
+                        "Greater than or equal comparison can only be done on numbers",
                     )),
 
                     // less than
@@ -178,7 +171,7 @@ impl Interpreter {
                     }
                     (TokenType::Less, _, _) => Err(InterpreterError::from_token(
                         &op,
-                        "Less than comparison can only be done on numbers".to_string(),
+                        "Less than comparison can only be done on numbers",
                     )),
 
                     // less than or equal
@@ -187,7 +180,7 @@ impl Interpreter {
                     }
                     (TokenType::LessEqual, _, _) => Err(InterpreterError::from_token(
                         &op,
-                        "Less than or equal comparison can only be done on numbers".to_string(),
+                        "Less than or equal comparison can only be done on numbers",
                     )),
 
                     // not equal
@@ -197,10 +190,7 @@ impl Interpreter {
                     (TokenType::EqualEqual, a, b) => Ok(LoxValue::Boolean(a == b)),
 
                     // fall through
-                    _ => Err(InterpreterError::from_token(
-                        &op,
-                        "Unknown binary operator".to_string(),
-                    )),
+                    _ => Err(InterpreterError::from_token(&op, "Unknown binary operator")),
                 }
             }
             Expr::Grouping { expression } => self.interpret(*expression),

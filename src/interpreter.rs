@@ -26,15 +26,15 @@ impl PartialEq for LoxValue {
     }
 }
 
-impl TryFrom<&Token<'_>> for LoxValue {
+impl TryFrom<&Token> for LoxValue {
     type Error = InterpreterError;
 
-    fn try_from(value: &Token<'_>) -> Result<Self, Self::Error> {
-        match value.t {
+    fn try_from(value: &Token) -> Result<Self, Self::Error> {
+        match &value.t {
             TokenType::Nil => Ok(Self::Nil),
             TokenType::True => Ok(Self::Boolean(true)),
             TokenType::False => Ok(Self::Boolean(false)),
-            TokenType::Number(v) => Ok(Self::Number(v)),
+            TokenType::Number(v) => Ok(Self::Number(*v)),
             TokenType::String(v) => Ok(Self::String(v.to_string())),
             _ => Err(InterpreterError::from_token(value, "Unexpected value")),
         }
@@ -59,7 +59,7 @@ pub struct InterpreterError {
 }
 
 impl InterpreterError {
-    pub fn from_token(token: &Token<'_>, message: impl AsRef<str>) -> Self {
+    pub fn from_token(token: &Token, message: impl AsRef<str>) -> Self {
         Self {
             line: token.line,
             location: token.lexeme.to_string(),
@@ -122,7 +122,7 @@ impl Interpreter {
             Expr::Literal { value } => (&value).try_into(),
             Expr::Unary { op, right } => {
                 let right_val = self.evaluate(*right)?;
-                match (op.t, right_val) {
+                match (&op.t, right_val) {
                     (TokenType::Minus, LoxValue::Number(n)) => Ok(LoxValue::Number(-1.0 * n)),
                     (TokenType::Minus, _) => Err(InterpreterError::from_token(
                         &op,
@@ -141,7 +141,7 @@ impl Interpreter {
                 let left_val = self.evaluate(*left)?;
                 let right_val = self.evaluate(*right)?;
 
-                match (op.t, left_val, right_val) {
+                match (&op.t, left_val, right_val) {
                     // subtraction
                     (TokenType::Minus, LoxValue::Number(a), LoxValue::Number(b)) => {
                         Ok(LoxValue::Number(a - b))

@@ -5,7 +5,7 @@ use crate::Reportable;
 
 pub struct Scanner<'code> {
     source: &'code String,
-    tokens: Vec<Token<'code>>,
+    tokens: Vec<Token>,
     start: usize,
     current: usize,
     line: usize,
@@ -55,7 +55,7 @@ const KEYWORDS: &[(&str, TokenType)] = &[
 fn get_keyword(key: &str) -> Result<TokenType, usize> {
     KEYWORDS
         .binary_search_by(|(k, _)| k.cmp(&key))
-        .map(|x| KEYWORDS[x].1)
+        .map(|x| KEYWORDS[x].1.clone())
 }
 
 fn is_digit(c: &str) -> bool {
@@ -91,11 +91,7 @@ impl<'code> Scanner<'code> {
             }
         }
 
-        self.tokens.push(Token {
-            t: TokenType::Eof,
-            lexeme: "",
-            line: self.line,
-        });
+        self.tokens.push(Token::new(TokenType::Eof, "", self.line));
 
         (&self.tokens, errs)
     }
@@ -277,7 +273,8 @@ impl<'code> Scanner<'code> {
 
         self.advance();
         self.add_token(TokenType::String(
-            &self.source[self.next_char(self.start)..self.offset_char(self.current, -1)],
+            (&self.source[self.next_char(self.start)..self.offset_char(self.current, -1)])
+                .to_string(),
         ));
 
         Ok(Some(()))
@@ -314,13 +311,9 @@ impl<'code> Scanner<'code> {
         };
     }
 
-    fn add_token(&mut self, t: TokenType<'code>) {
+    fn add_token(&mut self, t: TokenType) {
         let lexeme = &self.source[self.start..self.current];
-        self.tokens.push(Token {
-            t,
-            lexeme,
-            line: self.line,
-        })
+        self.tokens.push(Token::new(t, lexeme, self.line))
     }
 
     fn error(&self, msg: impl AsRef<str>) -> ScanError {

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use crate::token::Token;
 use crate::interpreter::LoxValue;
+use crate::token::Token;
 
 #[derive(Debug)]
 pub struct Environment {
@@ -19,9 +19,8 @@ impl Environment {
             None => Environment {
                 values: HashMap::new(),
                 parent: None,
-            }
+            },
         }
-
     }
 
     pub fn define(&mut self, name: &Token, value: LoxValue) {
@@ -31,12 +30,10 @@ impl Environment {
     pub fn get(&self, name: &Token) -> Option<LoxValue> {
         match self.values.get(&name.lexeme.to_string()) {
             Some(v) => Some(v.clone()),
-            None => {
-                match &self.parent {
-                    Some(e) => e.get(name),
-                    None => None
-                }
-            }
+            None => match &self.parent {
+                Some(e) => e.get(name),
+                None => None,
+            },
         }
     }
 }

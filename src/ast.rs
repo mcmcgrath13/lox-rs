@@ -1,28 +1,29 @@
 use crate::token::Token;
 use crate::PrettyPrinting;
 
-pub enum Expr<'a> {
+#[derive(Clone, Debug)]
+pub enum Expr {
     Binary {
-        left: Box<Expr<'a>>,
-        right: Box<Expr<'a>>,
-        op: Token<'a>,
+        left: Box<Expr>,
+        right: Box<Expr>,
+        op: Token,
     },
     Grouping {
-        expression: Box<Expr<'a>>,
+        expression: Box<Expr>,
     },
     Literal {
-        value: Token<'a>,
+        value: Token,
     },
     Unary {
-        right: Box<Expr<'a>>,
-        op: Token<'a>,
+        right: Box<Expr>,
+        op: Token,
     },
     Variable {
-        name: Token<'a>,
+        name: Token,
     },
 }
 
-impl PrettyPrinting for Expr<'_> {
+impl PrettyPrinting for Expr {
     fn print(&self) -> String {
         match self {
             Expr::Binary { left, right, op } => {
@@ -36,21 +37,21 @@ impl PrettyPrinting for Expr<'_> {
     }
 }
 
-pub enum Stmt<'a> {
+pub enum Stmt {
     Expression {
-        expression: Expr<'a>,
+        expression: Expr,
     },
     Print {
-        expression: Expr<'a>,
+        expression: Expr,
     },
     Var {
-        name: Token<'a>,
-        initializer: Option<Expr<'a>>,
+        name: Token,
+        initializer: Option<Expr>,
     },
 }
 
 // TODO: JUST USE FMT::DISPLAY
-impl PrettyPrinting for Stmt<'_> {
+impl PrettyPrinting for Stmt {
     fn print(&self) -> String {
         match self {
             Stmt::Print { expression } => {

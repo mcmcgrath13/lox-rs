@@ -50,6 +50,7 @@ impl PrettyPrinting for Expr {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum Stmt {
     Block {
         statements: Vec<Stmt>,
@@ -68,6 +69,10 @@ pub enum Stmt {
     Var {
         name: Token,
         initializer: Option<Expr>,
+    },
+    While {
+        condition: Expr,
+        body: Box<Stmt>,
     },
 }
 
@@ -107,6 +112,9 @@ impl PrettyPrinting for Stmt {
                 Some(v) => format!("(var {} {})", name.print(), v.print()),
                 None => format!("(var {})", name.print()),
             },
+            Stmt::While { condition, body } => {
+                format!("(while {} {})", condition.print(), body.print())
+            }
         }
     }
 }

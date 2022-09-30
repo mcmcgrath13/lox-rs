@@ -147,6 +147,11 @@ impl Interpreter {
 
                 environment.borrow_mut().define(&name, value);
             }
+            Stmt::While { condition, body } => {
+                while is_truthy(&self.evaluate(condition.clone(), Rc::clone(&environment))?) {
+                    self.execute(*body.clone(), Rc::clone(&environment))?;
+                }
+            }
         };
 
         Ok(())

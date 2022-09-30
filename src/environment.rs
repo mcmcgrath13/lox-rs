@@ -13,15 +13,9 @@ pub struct Environment {
 
 impl Environment {
     pub fn new(enclosing: Option<Rc<RefCell<Environment>>>) -> Self {
-        match enclosing {
-            Some(e) => Environment {
-                values: HashMap::new(),
-                enclosing: Some(Rc::clone(&e)),
-            },
-            None => Environment {
-                values: HashMap::new(),
-                enclosing: None,
-            },
+        Environment {
+            values: HashMap::new(),
+            enclosing,
         }
     }
 
@@ -39,15 +33,14 @@ impl Environment {
         }
     }
 
-    pub fn assign(&mut self, name: &Token, value: LoxValue) -> Option<LoxValue> {
+    pub fn assign(&mut self, name: &Token, value: LoxValue) -> Option<()> {
         if self.values.contains_key(&name.lexeme) {
-            return match self.values.insert(name.lexeme.clone(), value.clone()) {
-                Some(v) => Some(v),
-                None => match &mut self.enclosing {
-                    Some(e) => e.borrow_mut().assign(name, value),
-                    None => None,
-                },
-            };
+            self.values.insert(name.lexeme.clone(), value);
+            return Some(());
+        }
+
+        if let Some(e) = &self.enclosing {
+            return e.borrow_mut().assign(name, value);
         }
 
         None

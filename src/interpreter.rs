@@ -80,20 +80,20 @@ impl Reportable for InterpreterError {
 }
 
 #[derive(Debug)]
-pub struct Interpreter {}
+pub struct Interpreter {
+    environment: Rc<RefCell<Environment>>,
+}
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            environment: Rc::new(RefCell::new(Environment::new(None))),
+        }
     }
 
-    pub fn interpret(
-        &self,
-        environment: Rc<RefCell<Environment>>,
-        stmts: Vec<Stmt>,
-    ) -> Result<(), InterpreterError> {
+    pub fn interpret(&self, stmts: Vec<Stmt>) -> Result<(), InterpreterError> {
         for stmt in stmts {
-            self.execute(stmt, Rc::clone(&environment))?;
+            self.execute(stmt, Rc::clone(&self.environment))?;
         }
 
         Ok(())
@@ -106,7 +106,9 @@ impl Interpreter {
     ) -> Result<(), InterpreterError> {
         match stmt {
             Stmt::Block { statements } => {
-                let block_environment = Rc::new(RefCell::new(Environment::new(Some(environment))));
+                let block_environment = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(
+                    &environment,
+                )))));
                 for statement in statements {
                     self.execute(statement, Rc::clone(&block_environment))?;
                 }

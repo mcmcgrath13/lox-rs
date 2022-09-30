@@ -1,12 +1,9 @@
-use std::cell::RefCell;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
-use std::rc::Rc;
 
 use colored::Colorize;
 
-use crate::environment::Environment;
 use crate::interpreter::Interpreter;
 use crate::parser::Parser;
 use crate::scanner::Scanner;
@@ -30,7 +27,7 @@ pub trait Reportable {
 struct RunTime {
     had_error: bool,
     had_runtime_error: bool,
-    environment: Rc<RefCell<Environment>>,
+    interpreter: Interpreter,
 }
 
 impl RunTime {
@@ -38,7 +35,7 @@ impl RunTime {
         RunTime {
             had_error: false,
             had_runtime_error: false,
-            environment: Rc::new(RefCell::new(Environment::new(None))),
+            interpreter: Interpreter::new(),
         }
     }
 
@@ -74,14 +71,9 @@ impl RunTime {
         }
 
         println!("{}", "\nResult:".bold().green());
-        let interpreter = Interpreter::new();
-        if let Err(err) = interpreter.interpret(Rc::clone(&self.environment), ast) {
+        if let Err(err) = self.interpreter.interpret(ast) {
             self.runtime_error(err);
         }
-
-        // type infer the parse
-        // do environment
-        // ...
     }
 
     fn error(&mut self, err: impl Reportable) {

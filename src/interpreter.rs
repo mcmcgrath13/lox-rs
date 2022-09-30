@@ -103,7 +103,7 @@ impl Interpreter {
         &self,
         stmt: Stmt,
         environment: Rc<RefCell<Environment>>,
-    ) -> Result<LoxValue, InterpreterError> {
+    ) -> Result<(), InterpreterError> {
         match stmt {
             Stmt::Block { statements } => {
                 let block_environment = Rc::new(RefCell::new(Environment::new(Some(environment))));
@@ -112,13 +112,13 @@ impl Interpreter {
                 }
                 // should always be true given we construct the environment with an
                 // enclosing environment above
-                Ok(LoxValue::Nil)
             }
-            Stmt::Expression { expression } => self.evaluate(expression, environment),
+            Stmt::Expression { expression } => {
+                self.evaluate(expression, environment)?;
+            }
             Stmt::Print { expression } => {
                 let value = self.evaluate(expression, Rc::clone(&environment))?;
                 println!("{}", value);
-                Ok(value)
             }
             Stmt::Var { name, initializer } => {
                 let mut value = LoxValue::Nil;
@@ -127,9 +127,10 @@ impl Interpreter {
                 }
 
                 environment.borrow_mut().define(&name, value);
-                Ok(LoxValue::Nil)
             }
-        }
+        };
+
+        Ok(())
     }
 
     fn evaluate(

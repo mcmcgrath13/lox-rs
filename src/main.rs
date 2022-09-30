@@ -62,7 +62,7 @@ impl RunTime {
 
         // short circuit at this point if we've had errors
         if self.had_error {
-            println!("\nOH NO! we had an error!");
+            eprintln!("\nOH NO! we had an error!");
             return;
         }
 

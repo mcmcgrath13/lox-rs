@@ -2,7 +2,14 @@ use std::env;
 use std::fs;
 use std::io::{self, Write};
 
+use colored::Colorize;
+
+use crate::interpreter::Interpreter;
+use crate::parser::Parser;
+use crate::scanner::Scanner;
+
 mod ast;
+mod environment;
 mod interpreter;
 mod parser;
 mod scanner;
@@ -15,10 +22,6 @@ pub trait PrettyPrinting {
 pub trait Reportable {
     fn report(&self);
 }
-
-use crate::interpreter::Interpreter;
-use crate::parser::Parser;
-use crate::scanner::Scanner;
 
 #[derive(Debug)]
 struct RunTime {
@@ -43,36 +46,34 @@ impl RunTime {
         for err in scan_errs {
             self.error(err)
         }
+
+        println!("{}", "\nScanned tokens:".bold().cyan());
         for token in tokens {
             println!("{}", token)
         }
 
         // parsing phase
         let mut parser = Parser::new(tokens);
-        let (result, parse_errs) = parser.parse();
+        let (ast, parse_errs) = parser.parse();
         for err in parse_errs {
             self.error(err)
         }
 
         // short circuit at this point if we've had errors
         if self.had_error {
-            println!("we had an error!");
+            eprintln!("{}", "\nOH NO! we had an error!".bold().red());
             return;
         }
 
-        if let Some(ast) = result {
-            println!("{}", ast.print());
-            match self.interpreter.interpret(ast) {
-                Ok(v) => println!("{}", v),
-                Err(err) => {
-                    self.runtime_error(err);
-                }
-            }
+        println!("{}", "\nParsed AST:".bold().yellow());
+        for stmt in &ast {
+            println!("{}", stmt.print());
         }
 
-        // type infer the parse
-        // do environment
-        // ...
+        println!("{}", "\nResult:".bold().green());
+        if let Err(err) = self.interpreter.interpret(ast) {
+            self.runtime_error(err);
+        }
     }
 
     fn error(&mut self, err: impl Reportable) {

@@ -1,9 +1,13 @@
+use std::cell::RefCell;
 use std::fmt;
+use std::rc::Rc;
 
-use crate::ast::Expr;
+use crate::ast::{Expr, Stmt};
+use crate::environment::Environment;
 use crate::token::{Token, TokenType};
 use crate::Reportable;
 
+#[derive(Debug, Clone)]
 pub enum LoxValue {
     Boolean(bool),
     Nil,
@@ -24,15 +28,15 @@ impl PartialEq for LoxValue {
     }
 }
 
-impl TryFrom<&Token<'_>> for LoxValue {
+impl TryFrom<&Token> for LoxValue {
     type Error = InterpreterError;
 
-    fn try_from(value: &Token<'_>) -> Result<Self, Self::Error> {
-        match value.t {
+    fn try_from(value: &Token) -> Result<Self, Self::Error> {
+        match &value.t {
             TokenType::Nil => Ok(Self::Nil),
             TokenType::True => Ok(Self::Boolean(true)),
             TokenType::False => Ok(Self::Boolean(false)),
-            TokenType::Number(v) => Ok(Self::Number(v)),
+            TokenType::Number(v) => Ok(Self::Number(*v)),
             TokenType::String(v) => Ok(Self::String(v.to_string())),
             _ => Err(InterpreterError::from_token(value, "Unexpected value")),
         }
@@ -57,7 +61,7 @@ pub struct InterpreterError {
 }
 
 impl InterpreterError {
-    pub fn from_token(token: &Token<'_>, message: impl AsRef<str>) -> Self {
+    pub fn from_token(token: &Token, message: impl AsRef<str>) -> Self {
         Self {
             line: token.line,
             location: token.lexeme.to_string(),
@@ -76,19 +80,76 @@ impl Reportable for InterpreterError {
 }
 
 #[derive(Debug)]
-pub struct Interpreter {}
+pub struct Interpreter {
+    environment: Rc<RefCell<Environment>>,
+}
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            environment: Rc::new(RefCell::new(Environment::new(None))),
+        }
     }
 
-    pub fn interpret(&self, expr: Expr) -> Result<LoxValue, InterpreterError> {
+    pub fn interpret(&self, stmts: Vec<Stmt>) -> Result<(), InterpreterError> {
+        for stmt in stmts {
+            self.execute(stmt, Rc::clone(&self.environment))?;
+        }
+
+        Ok(())
+    }
+
+    fn execute(
+        &self,
+        stmt: Stmt,
+        environment: Rc<RefCell<Environment>>,
+    ) -> Result<(), InterpreterError> {
+        match stmt {
+            Stmt::Block { statements } => {
+                let block_environment = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(
+                    &environment,
+                )))));
+                for statement in statements {
+                    self.execute(statement, Rc::clone(&block_environment))?;
+                }
+            }
+            Stmt::Expression { expression } => {
+                self.evaluate(expression, environment)?;
+            }
+            Stmt::Print { expression } => {
+                let value = self.evaluate(expression, Rc::clone(&environment))?;
+                println!("{}", value);
+            }
+            Stmt::Var { name, initializer } => {
+                let mut value = LoxValue::Nil;
+                if let Some(expr) = initializer {
+                    value = self.evaluate(expr, Rc::clone(&environment))?;
+                }
+
+                environment.borrow_mut().define(&name, value);
+            }
+        };
+
+        Ok(())
+    }
+
+    fn evaluate(
+        &self,
+        expr: Expr,
+        environment: Rc<RefCell<Environment>>,
+    ) -> Result<LoxValue, InterpreterError> {
         match expr {
+            Expr::Assign { name, value } => {
+                let v = self.evaluate(*value, Rc::clone(&environment))?;
+                if environment.borrow_mut().assign(&name, v.clone()).is_none() {
+                    return Err(InterpreterError::from_token(&name, "undefined variable"));
+                }
+                Ok(v)
+            }
             Expr::Literal { value } => (&value).try_into(),
             Expr::Unary { op, right } => {
-                let right_val = self.interpret(*right)?;
-                match (op.t, right_val) {
+                let right_val = self.evaluate(*right, Rc::clone(&environment))?;
+                match (&op.t, right_val) {
                     (TokenType::Minus, LoxValue::Number(n)) => Ok(LoxValue::Number(-1.0 * n)),
                     (TokenType::Minus, _) => Err(InterpreterError::from_token(
                         &op,
@@ -104,10 +165,10 @@ impl Interpreter {
                 }
             }
             Expr::Binary { left, right, op } => {
-                let left_val = self.interpret(*left)?;
-                let right_val = self.interpret(*right)?;
+                let left_val = self.evaluate(*left, Rc::clone(&environment))?;
+                let right_val = self.evaluate(*right, Rc::clone(&environment))?;
 
-                match (op.t, left_val, right_val) {
+                match (&op.t, left_val, right_val) {
                     // subtraction
                     (TokenType::Minus, LoxValue::Number(a), LoxValue::Number(b)) => {
                         Ok(LoxValue::Number(a - b))
@@ -193,7 +254,11 @@ impl Interpreter {
                     _ => Err(InterpreterError::from_token(&op, "Unknown binary operator")),
                 }
             }
-            Expr::Grouping { expression } => self.interpret(*expression),
+            Expr::Grouping { expression } => self.evaluate(*expression, environment),
+            Expr::Variable { name } => match environment.borrow().get(&name) {
+                Some(value) => Ok(value),
+                None => Err(InterpreterError::from_token(&name, "Unknown variable")),
+            },
         }
     }
 }

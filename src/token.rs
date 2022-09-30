@@ -2,8 +2,8 @@ use std::fmt;
 
 use crate::PrettyPrinting;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum TokenType<'literal> {
+#[derive(Clone, Debug, PartialEq)]
+pub enum TokenType {
     // Single-character tokens
     LeftParen,
     RightParen,
@@ -29,7 +29,7 @@ pub enum TokenType<'literal> {
 
     // Literals
     Identifier,
-    String(&'literal str),
+    String(String),
     Number(f64),
 
     // Keywords
@@ -54,7 +54,7 @@ pub enum TokenType<'literal> {
     Eof,
 }
 
-impl fmt::Display for TokenType<'_> {
+impl fmt::Display for TokenType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             TokenType::Number(v) => write!(f, "Number {}", v),
@@ -64,20 +64,30 @@ impl fmt::Display for TokenType<'_> {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Token<'code> {
-    pub t: TokenType<'code>,
-    pub lexeme: &'code str,
+#[derive(Clone, Debug, PartialEq)]
+pub struct Token {
+    pub t: TokenType,
+    pub lexeme: String,
     pub line: usize,
 }
 
-impl fmt::Display for Token<'_> {
+impl Token {
+    pub fn new(t: TokenType, lexeme: impl AsRef<str>, line: usize) -> Self {
+        Token {
+            t,
+            lexeme: lexeme.as_ref().to_string(),
+            line,
+        }
+    }
+}
+
+impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "[{}] {} {}", self.line, self.t, self.lexeme)
     }
 }
 
-impl PrettyPrinting for Token<'_> {
+impl PrettyPrinting for Token {
     fn print(&self) -> String {
         match self.t {
             TokenType::Number(v) => format!("{}", v),

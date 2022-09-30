@@ -1,9 +1,9 @@
-use crate::ast::Expr;
+use crate::ast::{Expr, Stmt};
 use crate::token::{Token, TokenType};
 use crate::Reportable;
 
 pub struct Parser<'code> {
-    tokens: &'code Vec<Token<'code>>,
+    tokens: &'code Vec<Token>,
     current: usize,
 }
 
@@ -14,7 +14,7 @@ pub struct ParseError {
 }
 
 impl ParseError {
-    pub fn from_token(token: &Token<'_>, message: impl AsRef<str>) -> Self {
+    pub fn from_token(token: &Token, message: impl AsRef<str>) -> Self {
         Self {
             line: token.line,
             lexeme: token.lexeme.to_string(),
@@ -33,29 +33,85 @@ impl Reportable for ParseError {
 }
 
 impl<'code> Parser<'code> {
-    pub fn new(tokens: &'code Vec<Token<'code>>) -> Parser<'code> {
+    pub fn new(tokens: &'code Vec<Token>) -> Parser<'code> {
         Parser { tokens, current: 0 }
     }
 
-    pub fn parse(&mut self) -> (Option<Expr<'code>>, Vec<ParseError>) {
+    pub fn parse(&mut self) -> (Vec<Stmt>, Vec<ParseError>) {
         let mut errs = Vec::new();
-        match self.expression() {
-            Ok(e) => (Some(e), errs),
-            Err(e) => {
-                errs.push(e);
-                (None, errs)
+        let mut statements = Vec::new();
+
+        loop {
+            match self.declaration() {
+                Ok(Some(s)) => statements.push(s),
+                Ok(None) => break,
+                Err(e) => {
+                    self.synchronize();
+                    errs.push(e)
+                }
             }
         }
+
+        (statements, errs)
     }
 
     // Recursive descent methods:
-    // expression -> equality -> comparison -> term -> factor -> unary -> primary
+    // declaration -> statement -> expression -> assignment -> equality -> ...
+    // ... comparison -> term -> factor -> unary -> primary
 
-    fn expression(&mut self) -> Result<Expr<'code>, ParseError> {
-        self.equality()
+    fn declaration(&mut self) -> Result<Option<Stmt>, ParseError> {
+        if self.is_at_end() {
+            return Ok(None);
+        };
+
+        if self.match_next(&[TokenType::Var]).is_some() {
+            return Ok(Some(self.var_declaration()?));
+        }
+
+        Ok(Some(self.statement()?))
     }
 
-    fn equality(&mut self) -> Result<Expr<'code>, ParseError> {
+    fn statement(&mut self) -> Result<Stmt, ParseError> {
+        if self.match_next(&[TokenType::Print]).is_some() {
+            return self.print_statement();
+        }
+
+        if self.match_next(&[TokenType::LeftBrace]).is_some() {
+            return Ok(Stmt::Block {
+                statements: self.block()?,
+            });
+        }
+
+        self.expression_statement()
+    }
+
+    fn expression(&mut self) -> Result<Expr, ParseError> {
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> Result<Expr, ParseError> {
+        let expr = self.equality()?;
+
+        if self.match_next(&[TokenType::Equal]).is_some() {
+            let value = self.assignment()?;
+
+            if let Expr::Variable { name } = expr {
+                return Ok(Expr::Assign {
+                    name,
+                    value: Box::new(value),
+                });
+            }
+
+            return Err(ParseError::from_token(
+                self.previous(),
+                "Invalid assignment target",
+            ));
+        }
+
+        Ok(expr)
+    }
+
+    fn equality(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.comparison()?;
 
         while let Some(op) = self.match_next(&[TokenType::EqualEqual, TokenType::BangEqual]) {
@@ -70,7 +126,7 @@ impl<'code> Parser<'code> {
         Ok(expr)
     }
 
-    fn comparison(&mut self) -> Result<Expr<'code>, ParseError> {
+    fn comparison(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.term()?;
 
         while let Some(op) = self.match_next(&[
@@ -90,7 +146,7 @@ impl<'code> Parser<'code> {
         Ok(expr)
     }
 
-    fn term(&mut self) -> Result<Expr<'code>, ParseError> {
+    fn term(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.factor()?;
 
         while let Some(op) = self.match_next(&[TokenType::Minus, TokenType::Plus]) {
@@ -105,7 +161,7 @@ impl<'code> Parser<'code> {
         Ok(expr)
     }
 
-    fn factor(&mut self) -> Result<Expr<'code>, ParseError> {
+    fn factor(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.unary()?;
 
         while let Some(op) = self.match_next(&[TokenType::Slash, TokenType::Star]) {
@@ -120,7 +176,7 @@ impl<'code> Parser<'code> {
         Ok(expr)
     }
 
-    fn unary(&mut self) -> Result<Expr<'code>, ParseError> {
+    fn unary(&mut self) -> Result<Expr, ParseError> {
         match self.match_next(&[TokenType::Bang, TokenType::Minus]) {
             Some(op) => {
                 let right = Box::new(self.unary()?);
@@ -130,7 +186,7 @@ impl<'code> Parser<'code> {
         }
     }
 
-    fn primary(&mut self) -> Result<Expr<'code>, ParseError> {
+    fn primary(&mut self) -> Result<Expr, ParseError> {
         if let Some(value) = self.match_next(&[TokenType::False, TokenType::True, TokenType::Nil]) {
             return Ok(Expr::Literal { value });
         }
@@ -140,30 +196,71 @@ impl<'code> Parser<'code> {
             match self.peek().t {
                 TokenType::Number(_) | TokenType::String(_) => {
                     return Ok(Expr::Literal {
-                        value: self.advance(),
+                        value: self.advance().clone(),
                     })
                 }
                 _ => {}
             }
         }
 
-        if let Some(left_paren) = self.match_next(&[TokenType::LeftParen]) {
+        if self.match_next(&[TokenType::LeftParen]).is_some() {
             let expression = Box::new(self.expression()?);
-            match self.match_next(&[TokenType::RightParen]) {
-                Some(_) => return Ok(Expr::Grouping { expression }),
-                None => {
-                    return Err(ParseError::from_token(
-                        &left_paren,
-                        "no matching right paren",
-                    ))
-                }
-            };
+            self.consume(TokenType::RightParen, "no matching right paren")?;
+            return Ok(Expr::Grouping { expression });
         };
 
+        if let Some(name) = self.match_next(&[TokenType::Identifier]) {
+            return Ok(Expr::Variable { name });
+        }
+
         Err(ParseError::from_token(
-            &self.peek(),
+            self.peek(),
             "Unterminated expression",
         ))
+    }
+
+    // statement parsing helpers
+    fn var_declaration(&mut self) -> Result<Stmt, ParseError> {
+        let name = self.consume(TokenType::Identifier, "expect variable name")?;
+
+        let mut initializer = None;
+        if self.match_next(&[TokenType::Equal]).is_some() {
+            initializer = Some(self.expression()?);
+        }
+
+        self.consume(
+            TokenType::Semicolon,
+            "expect ';' after variable declaration",
+        )?;
+
+        Ok(Stmt::Var { name, initializer })
+    }
+
+    fn print_statement(&mut self) -> Result<Stmt, ParseError> {
+        let expression = self.expression()?;
+        self.consume(TokenType::Semicolon, "expect ';' after value")?;
+        Ok(Stmt::Print { expression })
+    }
+
+    fn expression_statement(&mut self) -> Result<Stmt, ParseError> {
+        let expression = self.expression()?;
+        self.consume(TokenType::Semicolon, "expect ';' after value")?;
+        Ok(Stmt::Expression { expression })
+    }
+
+    fn block(&mut self) -> Result<Vec<Stmt>, ParseError> {
+        let mut statements = Vec::new();
+
+        while !self.check(&TokenType::RightBrace) {
+            match self.declaration()? {
+                None => break,
+                Some(s) => statements.push(s),
+            }
+        }
+
+        self.consume(TokenType::RightBrace, "Expect '}' after block")?;
+
+        Ok(statements)
     }
 
     // Helper methods for traversing the tokens
@@ -180,15 +277,15 @@ impl<'code> Parser<'code> {
         self.peek().t == *t
     }
 
-    fn peek(&self) -> Token<'code> {
-        self.tokens[self.current]
+    fn peek(&self) -> &Token {
+        &self.tokens[self.current]
     }
 
-    fn previous(&self) -> Token<'code> {
-        self.tokens[self.current - 1]
+    fn previous(&self) -> &Token {
+        &self.tokens[self.current - 1]
     }
 
-    fn advance(&mut self) -> Token<'code> {
+    fn advance(&mut self) -> &Token {
         if !self.is_at_end() {
             self.current += 1
         }
@@ -196,14 +293,21 @@ impl<'code> Parser<'code> {
         self.previous()
     }
 
-    fn match_next(&mut self, types: &[TokenType]) -> Option<Token<'code>> {
+    fn match_next(&mut self, types: &[TokenType]) -> Option<Token> {
         for t in types {
             if self.check(t) {
-                return Some(self.advance());
+                return Some(self.advance().clone());
             }
         }
 
         None
+    }
+
+    fn consume(&mut self, t: TokenType, message: impl AsRef<str>) -> Result<Token, ParseError> {
+        match self.match_next(&[t]) {
+            Some(t) => Ok(t),
+            None => Err(ParseError::from_token(self.peek(), message)),
+        }
     }
 
     // Error handling

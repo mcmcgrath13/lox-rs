@@ -343,6 +343,9 @@ impl<'code> Parser<'code> {
             Some(self.expression_statement()?)
         };
 
+        // if there's no condition, we insert true, to create a token which could still
+        // point to the correct place in the source code on error, we need to get the
+        // line where the condition would be
         let mut line = 0;
         let condition = if !self.check(&TokenType::Semicolon) {
             Some(self.expression()?)
@@ -361,7 +364,7 @@ impl<'code> Parser<'code> {
 
         let mut body = self.statement()?;
 
-        // desugar into while loop
+        // desugar into while loop from the inside out
         if let Some(inc) = increment {
             body = Stmt::Block {
                 statements: vec![body, Stmt::Expression { expression: inc }],

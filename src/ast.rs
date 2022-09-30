@@ -44,7 +44,7 @@ impl PrettyPrinting for Expr {
 
 pub enum Stmt {
     Block {
-        statements: Vec<Box<Stmt>>,
+        statements: Vec<Stmt>,
     },
     Expression {
         expression: Expr,
@@ -71,7 +71,7 @@ impl PrettyPrinting for Stmt {
             }
             Stmt::Expression { expression } => format!("(; {})", expression.print()),
             Stmt::Print { expression } => {
-                format!("(print {} )", expression.print())
+                format!("(print {})", expression.print())
             }
             Stmt::Var { name, initializer } => match initializer {
                 Some(v) => format!("(var {} {})", name.print(), v.print()),

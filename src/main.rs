@@ -1,6 +1,13 @@
+use std::cell::RefCell;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
+use std::rc::Rc;
+
+use crate::environment::Environment;
+use crate::interpreter::Interpreter;
+use crate::parser::Parser;
+use crate::scanner::Scanner;
 
 mod ast;
 mod environment;
@@ -17,23 +24,19 @@ pub trait Reportable {
     fn report(&self);
 }
 
-use crate::interpreter::Interpreter;
-use crate::parser::Parser;
-use crate::scanner::Scanner;
-
 #[derive(Debug)]
-struct RunTime<'e> {
+struct RunTime {
     had_error: bool,
     had_runtime_error: bool,
-    interpreter: Interpreter<'e>,
+    environment: Rc<RefCell<Environment>>,
 }
 
-impl<'e> RunTime<'e> {
-    fn new() -> RunTime<'e> {
+impl RunTime {
+    fn new() -> RunTime {
         RunTime {
             had_error: false,
             had_runtime_error: false,
-            interpreter: Interpreter::new(),
+            environment: Rc::new(RefCell::new(Environment::new(None))),
         }
     }
 
@@ -44,6 +47,8 @@ impl<'e> RunTime<'e> {
         for err in scan_errs {
             self.error(err)
         }
+
+        println!("\nScanned tokens:");
         for token in tokens {
             println!("{}", token)
         }
@@ -57,14 +62,18 @@ impl<'e> RunTime<'e> {
 
         // short circuit at this point if we've had errors
         if self.had_error {
-            println!("we had an error!");
+            println!("\nOH NO! we had an error!");
             return;
         }
 
+        println!("\nParsed AST:");
         for stmt in &ast {
             println!("{}", stmt.print());
         }
-        if let Err(err) = self.interpreter.interpret(ast) {
+
+        println!("\nResult:");
+        let interpreter = Interpreter::new();
+        if let Err(err) = interpreter.interpret(Rc::clone(&self.environment), ast) {
             self.runtime_error(err);
         }
 

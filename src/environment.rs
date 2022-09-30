@@ -1,20 +1,22 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::interpreter::LoxValue;
 use crate::token::Token;
 
 #[derive(Debug)]
-pub struct Environment<'e> {
+pub struct Environment {
     values: HashMap<String, LoxValue>,
-    pub enclosing: Option<&'e mut Environment<'e>>,
+    pub enclosing: Option<Rc<RefCell<Environment>>>,
 }
 
-impl<'e> Environment<'e> {
-    pub fn new(enclosing: Option<&'e mut Environment<'e>>) -> Self {
+impl Environment {
+    pub fn new(enclosing: Option<Rc<RefCell<Environment>>>) -> Self {
         match enclosing {
             Some(e) => Environment {
                 values: HashMap::new(),
-                enclosing: Some(e),
+                enclosing: Some(Rc::clone(&e)),
             },
             None => Environment {
                 values: HashMap::new(),
@@ -31,7 +33,7 @@ impl<'e> Environment<'e> {
         match self.values.get(&name.lexeme) {
             Some(v) => Some(v.clone()),
             None => match &self.enclosing {
-                Some(e) => e.get(name),
+                Some(e) => e.borrow().get(name),
                 None => None,
             },
         }
@@ -42,7 +44,7 @@ impl<'e> Environment<'e> {
             return match self.values.insert(name.lexeme.clone(), value.clone()) {
                 Some(v) => Some(v),
                 None => match &mut self.enclosing {
-                    Some(e) => e.assign(name, value),
+                    Some(e) => e.borrow_mut().assign(name, value),
                     None => None,
                 },
             };

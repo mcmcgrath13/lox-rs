@@ -1,4 +1,6 @@
+use std::cell::RefCell;
 use std::fmt;
+use std::rc::Rc;
 
 use crate::ast::{Expr, Stmt};
 use crate::environment::Environment;
@@ -78,69 +80,74 @@ impl Reportable for InterpreterError {
 }
 
 #[derive(Debug)]
-pub struct Interpreter<'e> {
-    environment: Environment<'e>,
-}
+pub struct Interpreter {}
 
-impl<'e> Interpreter<'e> {
+impl Interpreter {
     pub fn new() -> Self {
-        Self {
-            environment: Environment::new(None),
-        }
+        Self {}
     }
 
-    pub fn interpret(&mut self, stmts: Vec<Stmt>) -> Result<(), InterpreterError> {
+    pub fn interpret(
+        &self,
+        environment: Rc<RefCell<Environment>>,
+        stmts: Vec<Stmt>,
+    ) -> Result<(), InterpreterError> {
         for stmt in stmts {
-            self.execute(stmt)?;
+            self.execute(stmt, Rc::clone(&environment))?;
         }
 
         Ok(())
     }
 
-    fn execute(&mut self, stmt: Stmt) -> Result<LoxValue, InterpreterError> {
+    fn execute(
+        &self,
+        stmt: Stmt,
+        environment: Rc<RefCell<Environment>>,
+    ) -> Result<LoxValue, InterpreterError> {
         match stmt {
             Stmt::Block { statements } => {
-                self.environment = Environment::new(Some(&mut self.environment));
+                let block_environment = Rc::new(RefCell::new(Environment::new(Some(environment))));
                 for statement in statements {
-                    self.execute(*statement)?;
+                    self.execute(statement, Rc::clone(&block_environment))?;
                 }
                 // should always be true given we construct the environment with an
                 // enclosing environment above
-                if let Some(e) = self.environment.enclosing {
-                    self.environment = e
-                }
                 Ok(LoxValue::Nil)
             }
-            Stmt::Expression { expression } => self.evaluate(expression),
+            Stmt::Expression { expression } => self.evaluate(expression, environment),
             Stmt::Print { expression } => {
-                let value = self.evaluate(expression)?;
+                let value = self.evaluate(expression, Rc::clone(&environment))?;
                 println!("{}", value);
                 Ok(value)
             }
             Stmt::Var { name, initializer } => {
                 let mut value = LoxValue::Nil;
                 if let Some(expr) = initializer {
-                    value = self.evaluate(expr)?;
+                    value = self.evaluate(expr, Rc::clone(&environment))?;
                 }
 
-                self.environment.define(&name, value);
+                environment.borrow_mut().define(&name, value);
                 Ok(LoxValue::Nil)
             }
         }
     }
 
-    fn evaluate(&mut self, expr: Expr) -> Result<LoxValue, InterpreterError> {
+    fn evaluate(
+        &self,
+        expr: Expr,
+        environment: Rc<RefCell<Environment>>,
+    ) -> Result<LoxValue, InterpreterError> {
         match expr {
             Expr::Assign { name, value } => {
-                let v = self.evaluate(*value)?;
-                if self.environment.assign(&name, v.clone()).is_none() {
+                let v = self.evaluate(*value, Rc::clone(&environment))?;
+                if environment.borrow_mut().assign(&name, v.clone()).is_none() {
                     return Err(InterpreterError::from_token(&name, "undefined variable"));
                 }
                 Ok(v)
             }
             Expr::Literal { value } => (&value).try_into(),
             Expr::Unary { op, right } => {
-                let right_val = self.evaluate(*right)?;
+                let right_val = self.evaluate(*right, Rc::clone(&environment))?;
                 match (&op.t, right_val) {
                     (TokenType::Minus, LoxValue::Number(n)) => Ok(LoxValue::Number(-1.0 * n)),
                     (TokenType::Minus, _) => Err(InterpreterError::from_token(
@@ -157,8 +164,8 @@ impl<'e> Interpreter<'e> {
                 }
             }
             Expr::Binary { left, right, op } => {
-                let left_val = self.evaluate(*left)?;
-                let right_val = self.evaluate(*right)?;
+                let left_val = self.evaluate(*left, Rc::clone(&environment))?;
+                let right_val = self.evaluate(*right, Rc::clone(&environment))?;
 
                 match (&op.t, left_val, right_val) {
                     // subtraction
@@ -246,8 +253,8 @@ impl<'e> Interpreter<'e> {
                     _ => Err(InterpreterError::from_token(&op, "Unknown binary operator")),
                 }
             }
-            Expr::Grouping { expression } => self.evaluate(*expression),
-            Expr::Variable { name } => match self.environment.get(&name) {
+            Expr::Grouping { expression } => self.evaluate(*expression, environment),
+            Expr::Variable { name } => match environment.borrow().get(&name) {
                 Some(value) => Ok(value),
                 None => Err(InterpreterError::from_token(&name, "Unknown variable")),
             },

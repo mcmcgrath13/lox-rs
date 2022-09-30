@@ -77,7 +77,9 @@ impl<'code> Parser<'code> {
         }
 
         if self.match_next(&[TokenType::LeftBrace]).is_some() {
-            return Ok(Stmt::Block { statements: self.block()? });
+            return Ok(Stmt::Block {
+                statements: self.block()?,
+            });
         }
 
         self.expression_statement()
@@ -246,13 +248,13 @@ impl<'code> Parser<'code> {
         Ok(Stmt::Expression { expression })
     }
 
-    fn block(&mut self) -> Result<Vec<Box<Stmt>>, ParseError> {
-        let statements = Vec::new();
+    fn block(&mut self) -> Result<Vec<Stmt>, ParseError> {
+        let mut statements = Vec::new();
 
         while !self.check(&TokenType::RightBrace) {
             match self.declaration()? {
                 None => break,
-                Some(s) => statements.push(Box::new(s))
+                Some(s) => statements.push(s),
             }
         }
 

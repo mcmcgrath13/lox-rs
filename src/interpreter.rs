@@ -112,8 +112,6 @@ impl Interpreter {
                 for statement in statements {
                     self.execute(statement, Rc::clone(&block_environment))?;
                 }
-                // should always be true given we construct the environment with an
-                // enclosing environment above
             }
             Stmt::Expression { expression } => {
                 self.evaluate(expression, environment)?;

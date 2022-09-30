@@ -58,7 +58,6 @@ pub enum Stmt {
     },
 }
 
-// TODO: JUST USE FMT::DISPLAY
 impl PrettyPrinting for Stmt {
     fn print(&self) -> String {
         match self {
@@ -67,7 +66,7 @@ impl PrettyPrinting for Stmt {
                 for statement in statements {
                     s = s + &format!(" {}", statement.print())
                 }
-                s
+                s + ")"
             }
             Stmt::Expression { expression } => format!("(; {})", expression.print()),
             Stmt::Print { expression } => {

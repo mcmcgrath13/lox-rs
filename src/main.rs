@@ -4,6 +4,8 @@ use std::fs;
 use std::io::{self, Write};
 use std::rc::Rc;
 
+use colored::Colorize;
+
 use crate::environment::Environment;
 use crate::interpreter::Interpreter;
 use crate::parser::Parser;
@@ -48,7 +50,7 @@ impl RunTime {
             self.error(err)
         }
 
-        println!("\nScanned tokens:");
+        println!("{}", "\nScanned tokens:".bold().cyan());
         for token in tokens {
             println!("{}", token)
         }
@@ -62,16 +64,16 @@ impl RunTime {
 
         // short circuit at this point if we've had errors
         if self.had_error {
-            eprintln!("\nOH NO! we had an error!");
+            eprintln!("{}", "\nOH NO! we had an error!".bold().red());
             return;
         }
 
-        println!("\nParsed AST:");
+        println!("{}", "\nParsed AST:".bold().yellow());
         for stmt in &ast {
             println!("{}", stmt.print());
         }
 
-        println!("\nResult:");
+        println!("{}", "\nResult:".bold().green());
         let interpreter = Interpreter::new();
         if let Err(err) = interpreter.interpret(Rc::clone(&self.environment), ast) {
             self.runtime_error(err);

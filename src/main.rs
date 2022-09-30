@@ -43,13 +43,13 @@ impl RunTime {
         // scanning phase
         let mut scanner = Scanner::new(code);
         let (tokens, scan_errs) = scanner.scan_tokens();
-        for err in scan_errs {
-            self.error(err)
-        }
 
         println!("{}", "\nScanned tokens:".bold().cyan());
         for token in tokens {
             println!("{}", token)
+        }
+        for err in scan_errs {
+            self.error(err)
         }
 
         // parsing phase

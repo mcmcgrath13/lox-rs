@@ -18,6 +18,11 @@ pub enum Expr {
     Literal {
         value: Token,
     },
+    Logical {
+        left: Box<Expr>,
+        op: Token,
+        right: Box<Expr>,
+    },
     Unary {
         op: Token,
         right: Box<Expr>,
@@ -37,6 +42,9 @@ impl PrettyPrinting for Expr {
             Expr::Unary { right, op } => format!("({} {})", op.print(), right.print()),
             Expr::Grouping { expression } => format!("(group {})", expression.print()),
             Expr::Literal { value } => value.print(),
+            Expr::Logical { left, op, right } => {
+                format!("({} {} {})", op.print(), left.print(), right.print())
+            }
             Expr::Variable { name } => name.print(),
         }
     }
@@ -48,6 +56,11 @@ pub enum Stmt {
     },
     Expression {
         expression: Expr,
+    },
+    If {
+        condition: Expr,
+        then_branch: Box<Stmt>,
+        else_branch: Option<Box<Stmt>>,
     },
     Print {
         expression: Expr,
@@ -64,11 +77,29 @@ impl PrettyPrinting for Stmt {
             Stmt::Block { statements } => {
                 let mut s = "(block".to_string();
                 for statement in statements {
-                    s = s + &format!(" {}", statement.print())
+                    s += " ";
+                    s += &statement.print();
                 }
                 s + ")"
             }
             Stmt::Expression { expression } => format!("(; {})", expression.print()),
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let mut s = format!(
+                    "(if {} then {} else ",
+                    condition.print(),
+                    then_branch.print()
+                );
+                match else_branch {
+                    Some(v) => s += &*v.print(),
+                    None => s += "<none>",
+                }
+
+                s + ")"
+            }
             Stmt::Print { expression } => {
                 format!("(print {})", expression.print())
             }

@@ -56,8 +56,8 @@ impl<'code> Parser<'code> {
     }
 
     // Recursive descent methods:
-    // declaration -> statement -> expression -> assignment -> equality -> ...
-    // ... comparison -> term -> factor -> unary -> primary
+    // declaration -> statement -> expression -> assignment -> logical or ->  ...
+    // ... logical and -> equality -> comparison -> term -> factor -> unary -> primary
 
     fn declaration(&mut self) -> Result<Option<Stmt>, ParseError> {
         if self.is_at_end() {
@@ -82,6 +82,10 @@ impl<'code> Parser<'code> {
             });
         }
 
+        if self.match_next(&[TokenType::If]).is_some() {
+            return self.if_statement();
+        }
+
         self.expression_statement()
     }
 
@@ -90,7 +94,7 @@ impl<'code> Parser<'code> {
     }
 
     fn assignment(&mut self) -> Result<Expr, ParseError> {
-        let expr = self.equality()?;
+        let expr = self.logical_or()?;
 
         if self.match_next(&[TokenType::Equal]).is_some() {
             let value = self.assignment()?;
@@ -106,6 +110,36 @@ impl<'code> Parser<'code> {
                 self.previous(),
                 "Invalid assignment target",
             ));
+        }
+
+        Ok(expr)
+    }
+
+    fn logical_or(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.logical_and()?;
+
+        while let Some(op) = self.match_next(&[TokenType::Or]) {
+            let right = Box::new(self.logical_and()?);
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                op,
+                right,
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn logical_and(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.equality()?;
+
+        while let Some(op) = self.match_next(&[TokenType::And]) {
+            let right = Box::new(self.equality()?);
+            expr = Expr::Logical {
+                left: Box::new(expr),
+                op,
+                right,
+            };
         }
 
         Ok(expr)
@@ -261,6 +295,23 @@ impl<'code> Parser<'code> {
         self.consume(TokenType::RightBrace, "Expect '}' after block")?;
 
         Ok(statements)
+    }
+
+    fn if_statement(&mut self) -> Result<Stmt, ParseError> {
+        self.consume(TokenType::LeftParen, "expect '(' after if")?;
+        let condition = self.expression()?;
+        self.consume(TokenType::RightParen, "expect ')' after if condition")?;
+        let then_branch = Box::new(self.statement()?);
+        let else_branch = match self.match_next(&[TokenType::Else]) {
+            Some(_) => Some(Box::new(self.statement()?)),
+            None => None,
+        };
+
+        Ok(Stmt::If {
+            condition,
+            then_branch,
+            else_branch,
+        })
     }
 
     // Helper methods for traversing the tokens

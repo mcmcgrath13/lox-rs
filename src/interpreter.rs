@@ -15,6 +15,14 @@ pub enum LoxValue {
     String(String),
 }
 
+fn is_truthy(val: &LoxValue) -> bool {
+    match val {
+        LoxValue::Boolean(b) => *b,
+        LoxValue::Nil => false,
+        _ => true,
+    }
+}
+
 impl PartialEq for LoxValue {
     fn eq(&self, other: &Self) -> bool {
         println!("{} {}", self, other);
@@ -116,6 +124,17 @@ impl Interpreter {
             Stmt::Expression { expression } => {
                 self.evaluate(expression, environment)?;
             }
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                if is_truthy(&self.evaluate(condition, Rc::clone(&environment))?) {
+                    self.execute(*then_branch, Rc::clone(&environment))?;
+                } else if let Some(e) = else_branch {
+                    self.execute(*e, Rc::clone(&environment))?;
+                }
+            }
             Stmt::Print { expression } => {
                 let value = self.evaluate(expression, Rc::clone(&environment))?;
                 println!("{}", value);
@@ -145,24 +164,6 @@ impl Interpreter {
                     return Err(InterpreterError::from_token(&name, "undefined variable"));
                 }
                 Ok(v)
-            }
-            Expr::Literal { value } => (&value).try_into(),
-            Expr::Unary { op, right } => {
-                let right_val = self.evaluate(*right, Rc::clone(&environment))?;
-                match (&op.t, right_val) {
-                    (TokenType::Minus, LoxValue::Number(n)) => Ok(LoxValue::Number(-1.0 * n)),
-                    (TokenType::Minus, _) => Err(InterpreterError::from_token(
-                        &op,
-                        "non-number with unary minus",
-                    )),
-                    (TokenType::Bang, LoxValue::Boolean(b)) => Ok(LoxValue::Boolean(!b)),
-                    (TokenType::Bang, LoxValue::Nil) => Ok(LoxValue::Boolean(true)), // nil is falsy
-                    (TokenType::Bang, _) => Err(InterpreterError::from_token(
-                        &op,
-                        "non-boolean with unary exclamation",
-                    )),
-                    _ => Err(InterpreterError::from_token(&op, "Unknown unary operator")),
-                }
             }
             Expr::Binary { left, right, op } => {
                 let left_val = self.evaluate(*left, Rc::clone(&environment))?;
@@ -255,6 +256,42 @@ impl Interpreter {
                 }
             }
             Expr::Grouping { expression } => self.evaluate(*expression, environment),
+            Expr::Literal { value } => (&value).try_into(),
+            Expr::Logical { left, op, right } => {
+                let left_val = self.evaluate(*left, Rc::clone(&environment))?;
+                match op.t {
+                    TokenType::Or => {
+                        if is_truthy(&left_val) {
+                            return Ok(left_val);
+                        }
+                    }
+                    TokenType::And => {
+                        if !is_truthy(&left_val) {
+                            return Ok(left_val);
+                        }
+                    }
+                    _ => {
+                        return Err(InterpreterError::from_token(
+                            &op,
+                            "Unknown logical operator",
+                        ))
+                    }
+                }
+
+                Ok(self.evaluate(*right, Rc::clone(&environment))?)
+            }
+            Expr::Unary { op, right } => {
+                let right_val = self.evaluate(*right, Rc::clone(&environment))?;
+                match (&op.t, right_val) {
+                    (TokenType::Minus, LoxValue::Number(n)) => Ok(LoxValue::Number(-1.0 * n)),
+                    (TokenType::Minus, _) => Err(InterpreterError::from_token(
+                        &op,
+                        "non-number with unary minus",
+                    )),
+                    (TokenType::Bang, v) => Ok(LoxValue::Boolean(is_truthy(&v))),
+                    _ => Err(InterpreterError::from_token(&op, "Unknown unary operator")),
+                }
+            }
             Expr::Variable { name } => match environment.borrow().get(&name) {
                 Some(value) => Ok(value),
                 None => Err(InterpreterError::from_token(&name, "Unknown variable")),

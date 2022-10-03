@@ -14,6 +14,7 @@ mod interpreter;
 mod parser;
 mod scanner;
 mod token;
+mod types;
 
 pub trait PrettyPrinting {
     fn print(&self) -> String;

@@ -12,6 +12,11 @@ pub enum Expr {
         op: Token,
         right: Box<Expr>,
     },
+    Call {
+        callee: Box<Expr>,
+        paren: Token,
+        arguments: Vec<Expr>,
+    },
     Grouping {
         expression: Box<Expr>,
     },
@@ -39,6 +44,16 @@ impl PrettyPrinting for Expr {
             Expr::Binary { left, right, op } => {
                 format!("({} {} {})", op.print(), left.print(), right.print())
             }
+            Expr::Call {
+                callee, arguments, ..
+            } => {
+                let mut s = format!("({}", callee.print());
+                for argument in arguments {
+                    s += " ";
+                    s += &argument.print();
+                }
+                s + ")"
+            }
             Expr::Unary { right, op } => format!("({} {})", op.print(), right.print()),
             Expr::Grouping { expression } => format!("(group {})", expression.print()),
             Expr::Literal { value } => value.print(),
@@ -57,6 +72,11 @@ pub enum Stmt {
     },
     Expression {
         expression: Expr,
+    },
+    Function {
+        name: Token,
+        parameters: Vec<Token>,
+        body: Vec<Stmt>,
     },
     If {
         condition: Expr,
@@ -88,6 +108,23 @@ impl PrettyPrinting for Stmt {
                 s + ")"
             }
             Stmt::Expression { expression } => format!("(; {})", expression.print()),
+            Stmt::Function {
+                name,
+                parameters,
+                body,
+            } => {
+                let mut s = format!("({}", name);
+                for parameter in parameters {
+                    s += " ";
+                    s += &parameter.print();
+                }
+                s += "(body";
+                for statement in body {
+                    s += " ";
+                    s += &statement.print();
+                }
+                s + "))"
+            }
             Stmt::If {
                 condition,
                 then_branch,

@@ -57,12 +57,17 @@ impl<'code> Parser<'code> {
 
     // Recursive descent methods:
     // declaration -> statement -> expression -> assignment -> logical or ->  ...
-    // ... logical and -> equality -> comparison -> term -> factor -> unary -> primary
+    // ... logical and -> equality -> comparison -> term -> factor -> ...
+    // ... unary -> call -> primary
 
     fn declaration(&mut self) -> Result<Option<Stmt>, ParseError> {
         if self.is_at_end() {
             return Ok(None);
         };
+
+        if self.match_next(&[TokenType::Fun]).is_some() {
+            return Ok(Some(self.function_declaration("function")?));
+        }
 
         if self.match_next(&[TokenType::Var]).is_some() {
             return Ok(Some(self.var_declaration()?));
@@ -224,8 +229,22 @@ impl<'code> Parser<'code> {
                 let right = Box::new(self.unary()?);
                 Ok(Expr::Unary { op, right })
             }
-            None => self.primary(),
+            None => self.call(),
         }
+    }
+
+    fn call(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.primary()?;
+
+        loop {
+            if let Some(t) = self.match_next(&[TokenType::LeftParen]) {
+                expr = self.finish_call(expr, t)?;
+            } else {
+                break;
+            }
+        }
+
+        Ok(expr)
     }
 
     fn primary(&mut self) -> Result<Expr, ParseError> {
@@ -262,6 +281,49 @@ impl<'code> Parser<'code> {
     }
 
     // statement parsing helpers
+    fn function_declaration(
+        &mut self,
+        kind: impl AsRef<str> + std::fmt::Display,
+    ) -> Result<Stmt, ParseError> {
+        let name = self.consume(TokenType::Identifier, format!("expect {} name", kind))?;
+
+        self.consume(
+            TokenType::LeftParen,
+            format!("expect '(' after {} name", kind),
+        )?;
+
+        let mut parameters = Vec::new();
+        // accumulate the paramenters if there are any
+        if !self.check(&TokenType::RightParen) {
+            loop {
+                if parameters.len() > 255 {
+                    return Err(ParseError::from_token(
+                        &name,
+                        format!("too many parameters for {}, max is 255", kind),
+                    ));
+                }
+                parameters.push(self.consume(TokenType::Identifier, "expect parameter name")?);
+                if self.match_next(&[TokenType::Comma]).is_none() {
+                    break;
+                }
+            }
+        }
+
+        self.consume(TokenType::RightParen, "expect ')' after parameters")?;
+        self.consume(
+            TokenType::LeftBrace,
+            format!("expect '{{' before {} body", kind),
+        )?;
+
+        let body = self.block()?;
+
+        Ok(Stmt::Function {
+            name,
+            parameters,
+            body,
+        })
+    }
+
     fn var_declaration(&mut self) -> Result<Stmt, ParseError> {
         let name = self.consume(TokenType::Identifier, "expect variable name")?;
 
@@ -391,6 +453,37 @@ impl<'code> Parser<'code> {
         }
 
         Ok(body)
+    }
+
+    fn finish_call(&mut self, callee: Expr, token: Token) -> Result<Expr, ParseError> {
+        let mut arguments = Vec::new();
+
+        // accumulate the arguments if there are any
+        if !self.check(&TokenType::RightParen) {
+            loop {
+                if arguments.len() > 255 {
+                    return Err(ParseError::from_token(
+                        &token,
+                        "too many arguments to call, max is 255",
+                    ));
+                }
+                arguments.push(self.expression()?);
+                if self.match_next(&[TokenType::Comma]).is_none() {
+                    break;
+                }
+            }
+        }
+
+        let paren = self.consume(
+            TokenType::RightParen,
+            "expect ')' after function call arguments",
+        )?;
+
+        Ok(Expr::Call {
+            callee: Box::new(callee),
+            paren,
+            arguments,
+        })
     }
 
     // Helper methods for traversing the tokens

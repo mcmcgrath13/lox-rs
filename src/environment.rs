@@ -2,13 +2,13 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::interpreter::LoxValue;
 use crate::token::Token;
+use crate::types::LoxValue;
 
 #[derive(Debug)]
 pub struct Environment {
     values: HashMap<String, LoxValue>,
-    pub enclosing: Option<Rc<RefCell<Environment>>>,
+    enclosing: Option<Rc<RefCell<Environment>>>,
 }
 
 impl Environment {
@@ -21,6 +21,10 @@ impl Environment {
 
     pub fn define(&mut self, name: &Token, value: LoxValue) {
         self.values.insert(name.lexeme.clone(), value);
+    }
+
+    pub fn define_name(&mut self, name: impl AsRef<str>, value: LoxValue) {
+        self.values.insert(name.as_ref().to_string(), value);
     }
 
     pub fn get(&self, name: &Token) -> Option<LoxValue> {

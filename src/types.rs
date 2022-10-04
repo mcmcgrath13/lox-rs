@@ -38,7 +38,6 @@ pub enum LoxValue {
     Number(f64),
     String(String),
     Function(Rc<Box<dyn Callable>>),
-    // Function(NativeFunction),
 }
 
 impl Callable for LoxValue {
@@ -66,7 +65,7 @@ impl Callable for LoxValue {
             LoxValue::Function(callable) => callable.call(interpreter, arguments, line),
             _ => Err(InterpreterError::new(
                 line,
-                format!("{}", self),
+                self.location(),
                 "can only call functions and classes",
             )),
         }

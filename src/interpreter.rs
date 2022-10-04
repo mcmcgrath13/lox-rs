@@ -16,14 +16,6 @@ fn is_truthy(val: &LoxValue) -> bool {
     }
 }
 
-// make this an enum with exception and return variants
-// pub struct InterpreterError {
-//     line: usize,
-//     location: String,
-//     message: String,
-//     pub return_value: Option<LoxValue>,
-// }
-
 pub enum InterpreterError {
     Exception {
         line: usize,

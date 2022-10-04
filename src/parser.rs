@@ -96,7 +96,7 @@ impl<'code> Parser<'code> {
         }
 
         if let Some(t) = self.match_next(&[TokenType::Return]) {
-            return self.return_statement(t.clone());
+            return self.return_statement(t);
         }
 
         if self.match_next(&[TokenType::While]).is_some() {
@@ -240,12 +240,8 @@ impl<'code> Parser<'code> {
     fn call(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.primary()?;
 
-        loop {
-            if let Some(t) = self.match_next(&[TokenType::LeftParen]) {
-                expr = self.finish_call(expr, t)?;
-            } else {
-                break;
-            }
+        while let Some(t) = self.match_next(&[TokenType::LeftParen]) {
+            expr = self.finish_call(expr, t)?;
         }
 
         Ok(expr)

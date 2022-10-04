@@ -16,48 +16,62 @@ fn is_truthy(val: &LoxValue) -> bool {
     }
 }
 
-pub struct InterpreterError {
-    line: usize,
-    location: String,
-    message: String,
-    pub return_value: Option<LoxValue>,
+// make this an enum with exception and return variants
+// pub struct InterpreterError {
+//     line: usize,
+//     location: String,
+//     message: String,
+//     pub return_value: Option<LoxValue>,
+// }
+
+pub enum InterpreterError {
+    Exception {
+        line: usize,
+        location: String,
+        message: String,
+    },
+    Return {
+        value: LoxValue,
+    },
 }
 
 impl InterpreterError {
     pub fn new(line: usize, location: impl AsRef<str>, message: impl AsRef<str>) -> Self {
-        Self {
+        Self::Exception {
             line,
             location: location.as_ref().to_string(),
             message: message.as_ref().to_string(),
-            return_value: None,
         }
     }
 
     pub fn from_token(token: &Token, message: impl AsRef<str>) -> Self {
-        Self {
+        Self::Exception {
             line: token.line,
             location: token.lexeme.to_string(),
             message: message.as_ref().to_string(),
-            return_value: None,
         }
     }
 
-    pub fn from_result(token: &Token, result: LoxValue) -> Self {
-        Self {
-            line: token.line,
-            location: token.lexeme.to_string(),
-            message: "".to_string(),
-            return_value: Some(result),
-        }
+    pub fn from_result(value: LoxValue) -> Self {
+        Self::Return { value }
     }
 }
 
 impl Reportable for InterpreterError {
     fn report(&self) {
-        eprintln!(
-            "[line {} at {}] Error (Interpreter): {}",
-            self.line, self.location, self.message
-        );
+        match self {
+            InterpreterError::Exception {
+                line,
+                location,
+                message,
+            } => {
+                eprintln!(
+                    "[line {} at {}] Error (Interpreter): {}",
+                    line, location, message
+                );
+            }
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -71,10 +85,11 @@ impl Interpreter {
     pub fn new() -> Self {
         let globals = Rc::new(RefCell::new(Environment::new(None)));
 
+        // move this if there are ever more native functions
         globals.borrow_mut().define_name(
             "clock",
-            LoxValue::Builtin(NativeFunction::new(
-                |_arguments: &Vec<LoxValue>| -> Result<LoxValue, String> {
+            LoxValue::Function(Rc::new(Box::new(NativeFunction::new(
+                |_arguments: &[LoxValue]| -> Result<LoxValue, String> {
                     let start = SystemTime::now();
                     let since_the_epoch = start
                         .duration_since(UNIX_EPOCH)
@@ -82,7 +97,7 @@ impl Interpreter {
                     Ok(LoxValue::Number(since_the_epoch.as_secs() as f64))
                 },
                 0,
-            )),
+            )))),
         );
 
         Self {
@@ -116,12 +131,12 @@ impl Interpreter {
                 parameters,
                 body,
             } => {
-                let function = LoxValue::Function(UserFunction::new(
+                let function = LoxValue::Function(Rc::new(Box::new(UserFunction::new(
                     name.clone(),
                     parameters,
                     body,
                     Rc::clone(&environment),
-                ));
+                ))));
                 environment.borrow_mut().define(&name, function);
             }
             Stmt::If {
@@ -139,12 +154,14 @@ impl Interpreter {
                 let value = self.evaluate(expression, Rc::clone(&environment))?;
                 println!("{}", value);
             }
-            Stmt::Return { keyword, value } => {
+            Stmt::Return { value, .. } => {
                 let result = match value {
                     None => LoxValue::Nil,
                     Some(expr) => self.evaluate(expr, Rc::clone(&environment))?,
                 };
-                return Err(InterpreterError::from_result(&keyword, result));
+                // this is hacking into error bubbling up for the return code path
+                // not a true exception
+                return Err(InterpreterError::from_result(result));
             }
             Stmt::Var { name, initializer } => {
                 let mut value = LoxValue::Nil;

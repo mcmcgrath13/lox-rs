@@ -7,10 +7,10 @@ use crate::environment::Environment;
 use crate::interpreter::{Interpreter, InterpreterError};
 use crate::token::{Token, TokenType};
 
-pub trait Callable {
+pub trait Callable: fmt::Debug {
     fn arity(&self) -> usize;
     fn location(&self) -> String;
-    fn check_arity(&self, arguments: &Vec<LoxValue>, line: usize) -> Result<(), InterpreterError> {
+    fn check_arity(&self, arguments: &[LoxValue], line: usize) -> Result<(), InterpreterError> {
         if self.arity() == arguments.len() {
             Ok(())
         } else {
@@ -24,7 +24,7 @@ pub trait Callable {
     fn call(
         &self,
         interpreter: &Interpreter,
-        arguments: &Vec<LoxValue>,
+        arguments: &[LoxValue],
         line: usize,
     ) -> Result<LoxValue, InterpreterError>;
 }
@@ -37,15 +37,14 @@ pub enum LoxValue {
     Nil,
     Number(f64),
     String(String),
-    Function(UserFunction),
-    Builtin(NativeFunction),
+    Function(Rc<Box<dyn Callable>>),
+    // Function(NativeFunction),
 }
 
 impl Callable for LoxValue {
     fn arity(&self) -> usize {
         match self {
             LoxValue::Function(f) => f.arity(),
-            LoxValue::Builtin(f) => f.arity(),
             _ => 0,
         }
     }
@@ -53,7 +52,6 @@ impl Callable for LoxValue {
     fn location(&self) -> String {
         match self {
             LoxValue::Function(f) => f.location(),
-            LoxValue::Builtin(f) => f.location(),
             _ => "".to_string(),
         }
     }
@@ -61,12 +59,11 @@ impl Callable for LoxValue {
     fn call(
         &self,
         interpreter: &Interpreter,
-        arguments: &Vec<LoxValue>,
+        arguments: &[LoxValue],
         line: usize,
     ) -> Result<LoxValue, InterpreterError> {
         match self {
             LoxValue::Function(callable) => callable.call(interpreter, arguments, line),
-            LoxValue::Builtin(callable) => callable.call(interpreter, arguments, line),
             _ => Err(InterpreterError::new(
                 line,
                 format!("{}", self),
@@ -112,7 +109,6 @@ impl fmt::Display for LoxValue {
             LoxValue::String(v) => write!(f, "{}", v),
             LoxValue::Boolean(v) => write!(f, "{}", v),
             LoxValue::Nil => write!(f, "nil"),
-            LoxValue::Builtin(_) => write!(f, "<native fun>"),
             LoxValue::Function(fun) => write!(f, "<fun {}>", fun.location()),
         }
     }
@@ -120,7 +116,7 @@ impl fmt::Display for LoxValue {
 
 // ========== NATIVE FUNCTION ===========
 
-type FnPtr = fn(&Vec<LoxValue>) -> Result<LoxValue, String>;
+type FnPtr = fn(&[LoxValue]) -> Result<LoxValue, String>;
 
 #[derive(Clone)]
 pub struct NativeFunction {
@@ -152,7 +148,7 @@ impl Callable for NativeFunction {
     fn call(
         &self,
         _interpreter: &Interpreter,
-        arguments: &Vec<LoxValue>,
+        arguments: &[LoxValue],
         line: usize,
     ) -> Result<LoxValue, InterpreterError> {
         self.check_arity(arguments, line)?;
@@ -201,7 +197,7 @@ impl Callable for UserFunction {
     fn call(
         &self,
         interpreter: &Interpreter,
-        arguments: &Vec<LoxValue>,
+        arguments: &[LoxValue],
         line: usize,
     ) -> Result<LoxValue, InterpreterError> {
         self.check_arity(arguments, line)?;
@@ -221,10 +217,7 @@ impl Callable for UserFunction {
         match interpreter.execute_block(&self.body, Rc::clone(&environment)) {
             Ok(()) => Ok(LoxValue::Nil),
             Err(e) => match e {
-                InterpreterError {
-                    return_value: Some(v),
-                    ..
-                } => Ok(v),
+                InterpreterError::Return { value } => Ok(value),
                 _ => Err(e),
             },
         }

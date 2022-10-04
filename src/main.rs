@@ -20,6 +20,18 @@ pub trait PrettyPrinting {
     fn print(&self) -> String;
 }
 
+impl<T> PrettyPrinting for Vec<T>
+where
+    T: PrettyPrinting,
+{
+    fn print(&self) -> String {
+        self.iter()
+            .map(PrettyPrinting::print)
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}
+
 pub trait Reportable {
     fn report(&self);
 }

@@ -47,12 +47,7 @@ impl PrettyPrinting for Expr {
             Expr::Call {
                 callee, arguments, ..
             } => {
-                let mut s = format!("({}", callee.print());
-                for argument in arguments {
-                    s += " ";
-                    s += &argument.print();
-                }
-                s + ")"
+                format!("({} {})", callee.print(), arguments.print())
             }
             Expr::Unary { right, op } => format!("({} {})", op.print(), right.print()),
             Expr::Grouping { expression } => format!("(group {})", expression.print()),
@@ -104,12 +99,7 @@ impl PrettyPrinting for Stmt {
     fn print(&self) -> String {
         match self {
             Stmt::Block { statements } => {
-                let mut s = "(block".to_string();
-                for statement in statements {
-                    s += " ";
-                    s += &statement.print();
-                }
-                s + ")"
+                format!("(block {})", statements.print())
             }
             Stmt::Expression { expression } => format!("(; {})", expression.print()),
             Stmt::Function {
@@ -117,17 +107,12 @@ impl PrettyPrinting for Stmt {
                 parameters,
                 body,
             } => {
-                let mut s = format!("({}", name);
-                for parameter in parameters {
-                    s += " ";
-                    s += &parameter.print();
-                }
-                s += "(body";
-                for statement in body {
-                    s += " ";
-                    s += &statement.print();
-                }
-                s + "))"
+                format!(
+                    "({} {} (body {}))",
+                    name.print(),
+                    parameters.print(),
+                    body.print()
+                )
             }
             Stmt::If {
                 condition,

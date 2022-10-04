@@ -211,8 +211,15 @@ impl Callable for UserFunction {
             );
         }
 
-        interpreter.execute_block(&self.body, Rc::clone(&environment))?;
-
-        Ok(LoxValue::Nil)
+        match interpreter.execute_block(&self.body, Rc::clone(&environment)) {
+            Ok(()) => Ok(LoxValue::Nil),
+            Err(e) => match e {
+                InterpreterError {
+                    return_value: Some(v),
+                    ..
+                } => Ok(v),
+                _ => Err(e),
+            },
+        }
     }
 }

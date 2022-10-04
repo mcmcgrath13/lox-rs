@@ -77,12 +77,12 @@ impl<'code> Parser<'code> {
     }
 
     fn statement(&mut self) -> Result<Stmt, ParseError> {
-        if self.match_next(&[TokenType::Print]).is_some() {
-            return self.print_statement();
+        if self.match_next(&[TokenType::For]).is_some() {
+            return self.for_statement();
         }
 
-        if self.match_next(&[TokenType::While]).is_some() {
-            return self.while_statement();
+        if self.match_next(&[TokenType::If]).is_some() {
+            return self.if_statement();
         }
 
         if self.match_next(&[TokenType::LeftBrace]).is_some() {
@@ -91,12 +91,16 @@ impl<'code> Parser<'code> {
             });
         }
 
-        if self.match_next(&[TokenType::For]).is_some() {
-            return self.for_statement();
+        if self.match_next(&[TokenType::Print]).is_some() {
+            return self.print_statement();
         }
 
-        if self.match_next(&[TokenType::If]).is_some() {
-            return self.if_statement();
+        if let Some(t) = self.match_next(&[TokenType::Return]) {
+            return self.return_statement(t.clone());
+        }
+
+        if self.match_next(&[TokenType::While]).is_some() {
+            return self.while_statement();
         }
 
         self.expression_statement()
@@ -322,6 +326,17 @@ impl<'code> Parser<'code> {
             parameters,
             body,
         })
+    }
+
+    fn return_statement(&mut self, keyword: Token) -> Result<Stmt, ParseError> {
+        let mut value = None;
+        if !self.check(&TokenType::Semicolon) {
+            value = Some(self.expression()?);
+        }
+
+        self.consume(TokenType::Semicolon, "expect ';' after return statement")?;
+
+        Ok(Stmt::Return { keyword, value })
     }
 
     fn var_declaration(&mut self) -> Result<Stmt, ParseError> {

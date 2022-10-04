@@ -86,6 +86,10 @@ pub enum Stmt {
     Print {
         expression: Expr,
     },
+    Return {
+        keyword: Token,
+        value: Option<Expr>,
+    },
     Var {
         name: Token,
         initializer: Option<Expr>,
@@ -142,9 +146,11 @@ impl PrettyPrinting for Stmt {
 
                 s + ")"
             }
-            Stmt::Print { expression } => {
-                format!("(print {})", expression.print())
-            }
+            Stmt::Print { expression } => format!("(print {})", expression.print()),
+            Stmt::Return { value, .. } => match value {
+                Some(expression) => format!("(return {})", expression.print()),
+                None => "(return)".to_string(),
+            },
             Stmt::Var { name, initializer } => match initializer {
                 Some(v) => format!("(var {} {})", name.print(), v.print()),
                 None => format!("(var {})", name.print()),

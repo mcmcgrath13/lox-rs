@@ -20,6 +20,7 @@ pub struct InterpreterError {
     line: usize,
     location: String,
     message: String,
+    pub return_value: Option<LoxValue>,
 }
 
 impl InterpreterError {
@@ -28,6 +29,7 @@ impl InterpreterError {
             line,
             location: location.as_ref().to_string(),
             message: message.as_ref().to_string(),
+            return_value: None,
         }
     }
 
@@ -36,6 +38,16 @@ impl InterpreterError {
             line: token.line,
             location: token.lexeme.to_string(),
             message: message.as_ref().to_string(),
+            return_value: None,
+        }
+    }
+
+    pub fn from_result(token: &Token, result: LoxValue) -> Self {
+        Self {
+            line: token.line,
+            location: token.lexeme.to_string(),
+            message: "".to_string(),
+            return_value: Some(result),
         }
     }
 }
@@ -122,6 +134,13 @@ impl Interpreter {
             Stmt::Print { expression } => {
                 let value = self.evaluate(expression, Rc::clone(&environment))?;
                 println!("{}", value);
+            }
+            Stmt::Return { keyword, value } => {
+                let result = match value {
+                    None => LoxValue::Nil,
+                    Some(expr) => self.evaluate(expr, Rc::clone(&environment))?,
+                };
+                return Err(InterpreterError::from_result(&keyword, result));
             }
             Stmt::Var { name, initializer } => {
                 let mut value = LoxValue::Nil;

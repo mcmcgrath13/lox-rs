@@ -1,19 +1,12 @@
 use std::cell::RefCell;
-use std::fmt;
 use std::rc::Rc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::ast::{Expr, Stmt};
 use crate::environment::Environment;
 use crate::token::{Token, TokenType};
+use crate::types::{Callable, LoxValue, NativeFunction, UserFunction};
 use crate::Reportable;
-
-#[derive(Debug, Clone)]
-pub enum LoxValue {
-    Boolean(bool),
-    Nil,
-    Number(f64),
-    String(String),
-}
 
 fn is_truthy(val: &LoxValue) -> bool {
     match val {
@@ -23,79 +16,85 @@ fn is_truthy(val: &LoxValue) -> bool {
     }
 }
 
-impl PartialEq for LoxValue {
-    fn eq(&self, other: &Self) -> bool {
-        println!("{} {}", self, other);
-        match (self, other) {
-            (LoxValue::Nil, LoxValue::Nil) => false,
-            (LoxValue::Boolean(a), LoxValue::Boolean(b)) => a == b,
-            (LoxValue::Number(a), LoxValue::Number(b)) => a == b,
-            (LoxValue::String(a), LoxValue::String(b)) => a == b,
-            (_, _) => false,
-        }
-    }
-}
-
-impl TryFrom<&Token> for LoxValue {
-    type Error = InterpreterError;
-
-    fn try_from(value: &Token) -> Result<Self, Self::Error> {
-        match &value.t {
-            TokenType::Nil => Ok(Self::Nil),
-            TokenType::True => Ok(Self::Boolean(true)),
-            TokenType::False => Ok(Self::Boolean(false)),
-            TokenType::Number(v) => Ok(Self::Number(*v)),
-            TokenType::String(v) => Ok(Self::String(v.to_string())),
-            _ => Err(InterpreterError::from_token(value, "Unexpected value")),
-        }
-    }
-}
-
-impl fmt::Display for LoxValue {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            LoxValue::Number(v) => write!(f, "{}", v),
-            LoxValue::String(v) => write!(f, "{}", v),
-            LoxValue::Boolean(v) => write!(f, "{}", v),
-            LoxValue::Nil => write!(f, "nil"),
-        }
-    }
-}
-
-pub struct InterpreterError {
-    line: usize,
-    location: String,
-    message: String,
+pub enum InterpreterError {
+    Exception {
+        line: usize,
+        location: String,
+        message: String,
+    },
+    Return {
+        value: LoxValue,
+    },
 }
 
 impl InterpreterError {
+    pub fn new(line: usize, location: impl AsRef<str>, message: impl AsRef<str>) -> Self {
+        Self::Exception {
+            line,
+            location: location.as_ref().to_string(),
+            message: message.as_ref().to_string(),
+        }
+    }
+
     pub fn from_token(token: &Token, message: impl AsRef<str>) -> Self {
-        Self {
+        Self::Exception {
             line: token.line,
             location: token.lexeme.to_string(),
             message: message.as_ref().to_string(),
         }
     }
+
+    pub fn from_result(value: LoxValue) -> Self {
+        Self::Return { value }
+    }
 }
 
 impl Reportable for InterpreterError {
     fn report(&self) {
-        eprintln!(
-            "[line {} at {}] Error (Interpreter): {}",
-            self.line, self.location, self.message
-        );
+        match self {
+            InterpreterError::Exception {
+                line,
+                location,
+                message,
+            } => {
+                eprintln!(
+                    "[line {} at {}] Error (Interpreter): {}",
+                    line, location, message
+                );
+            }
+            _ => unreachable!(),
+        }
     }
 }
 
 #[derive(Debug)]
 pub struct Interpreter {
     environment: Rc<RefCell<Environment>>,
+    globals: Rc<RefCell<Environment>>,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
+        let globals = Rc::new(RefCell::new(Environment::new(None)));
+
+        // move this if there are ever more native functions
+        globals.borrow_mut().define_name(
+            "clock",
+            LoxValue::Function(Rc::new(Box::new(NativeFunction::new(
+                |_arguments: &[LoxValue]| -> Result<LoxValue, String> {
+                    let start = SystemTime::now();
+                    let since_the_epoch = start
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Time went backwards");
+                    Ok(LoxValue::Number(since_the_epoch.as_secs() as f64))
+                },
+                0,
+            )))),
+        );
+
         Self {
-            environment: Rc::new(RefCell::new(Environment::new(None))),
+            globals: Rc::clone(&globals),
+            environment: Rc::clone(&globals),
         }
     }
 
@@ -114,15 +113,23 @@ impl Interpreter {
     ) -> Result<(), InterpreterError> {
         match stmt {
             Stmt::Block { statements } => {
-                let block_environment = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(
-                    &environment,
-                )))));
-                for statement in statements {
-                    self.execute(statement, Rc::clone(&block_environment))?;
-                }
+                self.execute_block(&statements, Rc::clone(&environment))?;
             }
             Stmt::Expression { expression } => {
-                self.evaluate(expression, environment)?;
+                self.evaluate(expression, Rc::clone(&environment))?;
+            }
+            Stmt::Function {
+                name,
+                parameters,
+                body,
+            } => {
+                let function = LoxValue::Function(Rc::new(Box::new(UserFunction::new(
+                    name.clone(),
+                    parameters,
+                    body,
+                    Rc::clone(&environment),
+                ))));
+                environment.borrow_mut().define(&name, function);
             }
             Stmt::If {
                 condition,
@@ -139,6 +146,15 @@ impl Interpreter {
                 let value = self.evaluate(expression, Rc::clone(&environment))?;
                 println!("{}", value);
             }
+            Stmt::Return { value, .. } => {
+                let result = match value {
+                    None => LoxValue::Nil,
+                    Some(expr) => self.evaluate(expr, Rc::clone(&environment))?,
+                };
+                // this is hacking into error bubbling up for the return code path
+                // not a true exception
+                return Err(InterpreterError::from_result(result));
+            }
             Stmt::Var { name, initializer } => {
                 let mut value = LoxValue::Nil;
                 if let Some(expr) = initializer {
@@ -154,6 +170,20 @@ impl Interpreter {
             }
         };
 
+        Ok(())
+    }
+
+    pub fn execute_block(
+        &self,
+        statements: &Vec<Stmt>,
+        environment: Rc<RefCell<Environment>>,
+    ) -> Result<(), InterpreterError> {
+        let block_environment = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(
+            &environment,
+        )))));
+        for statement in statements {
+            self.execute(statement.clone(), Rc::clone(&block_environment))?;
+        }
         Ok(())
     }
 
@@ -259,6 +289,20 @@ impl Interpreter {
                     // fall through
                     _ => Err(InterpreterError::from_token(&op, "Unknown binary operator")),
                 }
+            }
+            Expr::Call {
+                callee,
+                paren,
+                arguments,
+            } => {
+                let callable = self.evaluate(*callee, Rc::clone(&environment))?;
+
+                let mut argument_vals = Vec::new();
+                for argument in arguments {
+                    argument_vals.push(self.evaluate(argument, Rc::clone(&environment))?);
+                }
+
+                callable.call(self, &argument_vals, paren.line)
             }
             Expr::Grouping { expression } => self.evaluate(*expression, environment),
             Expr::Literal { value } => (&value).try_into(),

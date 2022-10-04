@@ -12,6 +12,11 @@ pub enum Expr {
         op: Token,
         right: Box<Expr>,
     },
+    Call {
+        callee: Box<Expr>,
+        paren: Token,
+        arguments: Vec<Expr>,
+    },
     Grouping {
         expression: Box<Expr>,
     },
@@ -39,6 +44,11 @@ impl PrettyPrinting for Expr {
             Expr::Binary { left, right, op } => {
                 format!("({} {} {})", op.print(), left.print(), right.print())
             }
+            Expr::Call {
+                callee, arguments, ..
+            } => {
+                format!("({} {})", callee.print(), arguments.print())
+            }
             Expr::Unary { right, op } => format!("({} {})", op.print(), right.print()),
             Expr::Grouping { expression } => format!("(group {})", expression.print()),
             Expr::Literal { value } => value.print(),
@@ -58,6 +68,11 @@ pub enum Stmt {
     Expression {
         expression: Expr,
     },
+    Function {
+        name: Token,
+        parameters: Vec<Token>,
+        body: Vec<Stmt>,
+    },
     If {
         condition: Expr,
         then_branch: Box<Stmt>,
@@ -65,6 +80,10 @@ pub enum Stmt {
     },
     Print {
         expression: Expr,
+    },
+    Return {
+        keyword: Token,
+        value: Option<Expr>,
     },
     Var {
         name: Token,
@@ -80,14 +99,21 @@ impl PrettyPrinting for Stmt {
     fn print(&self) -> String {
         match self {
             Stmt::Block { statements } => {
-                let mut s = "(block".to_string();
-                for statement in statements {
-                    s += " ";
-                    s += &statement.print();
-                }
-                s + ")"
+                format!("(block {})", statements.print())
             }
             Stmt::Expression { expression } => format!("(; {})", expression.print()),
+            Stmt::Function {
+                name,
+                parameters,
+                body,
+            } => {
+                format!(
+                    "({} {} (body {}))",
+                    name.print(),
+                    parameters.print(),
+                    body.print()
+                )
+            }
             Stmt::If {
                 condition,
                 then_branch,
@@ -105,9 +131,11 @@ impl PrettyPrinting for Stmt {
 
                 s + ")"
             }
-            Stmt::Print { expression } => {
-                format!("(print {})", expression.print())
-            }
+            Stmt::Print { expression } => format!("(print {})", expression.print()),
+            Stmt::Return { value, .. } => match value {
+                Some(expression) => format!("(return {})", expression.print()),
+                None => "(return)".to_string(),
+            },
             Stmt::Var { name, initializer } => match initializer {
                 Some(v) => format!("(var {} {})", name.print(), v.print()),
                 None => format!("(var {})", name.print()),

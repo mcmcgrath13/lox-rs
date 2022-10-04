@@ -170,14 +170,21 @@ pub struct UserFunction {
     name: Token,
     parameters: Vec<Token>,
     body: Vec<Stmt>,
+    closure: Rc<RefCell<Environment>>,
 }
 
 impl UserFunction {
-    pub fn new(name: Token, parameters: Vec<Token>, body: Vec<Stmt>) -> Self {
+    pub fn new(
+        name: Token,
+        parameters: Vec<Token>,
+        body: Vec<Stmt>,
+        closure: Rc<RefCell<Environment>>,
+    ) -> Self {
         Self {
             name,
             parameters,
             body,
+            closure: Rc::clone(&closure),
         }
     }
 }
@@ -200,7 +207,7 @@ impl Callable for UserFunction {
         self.check_arity(arguments, line)?;
 
         let environment = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(
-            &interpreter.globals,
+            &self.closure,
         )))));
 
         // arity has already been checked, so unwrapping is safe

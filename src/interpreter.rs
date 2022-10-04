@@ -64,7 +64,7 @@ impl Reportable for InterpreterError {
 #[derive(Debug)]
 pub struct Interpreter {
     environment: Rc<RefCell<Environment>>,
-    pub globals: Rc<RefCell<Environment>>,
+    globals: Rc<RefCell<Environment>>,
 }
 
 impl Interpreter {
@@ -116,8 +116,12 @@ impl Interpreter {
                 parameters,
                 body,
             } => {
-                let function =
-                    LoxValue::Function(UserFunction::new(name.clone(), parameters, body));
+                let function = LoxValue::Function(UserFunction::new(
+                    name.clone(),
+                    parameters,
+                    body,
+                    Rc::clone(&environment),
+                ));
                 environment.borrow_mut().define(&name, function);
             }
             Stmt::If {

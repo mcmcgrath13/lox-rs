@@ -187,9 +187,14 @@ impl Resolver {
             self.declare(token)?;
             self.define(token);
         }
+
+        // body of a function is a block
+        self.begin_scope();
         for statement in body {
             self.resolve_statement(statement)?;
         }
+        self.end_scope();
+
         self.end_scope();
         self.current_function = enclosing_type;
 
@@ -199,7 +204,7 @@ impl Resolver {
     fn resolve_local(&mut self, name: &Token) {
         for (i, scope) in self.stack.iter().rev().enumerate() {
             if scope.contains_key(&name.lexeme) {
-                self.locals.insert(name.clone(), self.stack.len() - i - 1);
+                self.locals.insert(name.clone(), i);
             }
         }
     }

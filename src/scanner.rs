@@ -91,7 +91,8 @@ impl<'code> Scanner<'code> {
             }
         }
 
-        self.tokens.push(Token::new(TokenType::Eof, "", self.line));
+        self.tokens
+            .push(Token::new(TokenType::Eof, "", self.line, self.start));
 
         (&self.tokens, errs)
     }
@@ -313,7 +314,8 @@ impl<'code> Scanner<'code> {
 
     fn add_token(&mut self, t: TokenType) {
         let lexeme = &self.source[self.start..self.current];
-        self.tokens.push(Token::new(t, lexeme, self.line))
+        self.tokens
+            .push(Token::new(t, lexeme, self.line, self.start))
     }
 
     fn error(&self, msg: impl AsRef<str>) -> ScanError {

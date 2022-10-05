@@ -1,4 +1,5 @@
 use std::fmt;
+use std::hash::{Hash, Hasher};
 
 use crate::PrettyPrinting;
 
@@ -64,22 +65,41 @@ impl fmt::Display for TokenType {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+// offset is only used to ensure unique hash for each token
+#[derive(Clone, Debug)]
 pub struct Token {
     pub t: TokenType,
     pub lexeme: String,
     pub line: usize,
+    offset: usize,
 }
 
 impl Token {
-    pub fn new(t: TokenType, lexeme: impl AsRef<str>, line: usize) -> Self {
+    pub fn new(t: TokenType, lexeme: impl AsRef<str>, line: usize, offset: usize) -> Self {
         Token {
             t,
             lexeme: lexeme.as_ref().to_string(),
             line,
+            offset,
         }
     }
 }
+
+impl PartialEq for Token {
+    fn eq(&self, other: &Self) -> bool {
+        self.lexeme == other.lexeme && self.line == other.line && self.offset == other.offset
+    }
+}
+
+impl Hash for Token {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.lexeme.hash(state);
+        self.line.hash(state);
+        self.offset.hash(state);
+    }
+}
+
+impl Eq for Token {}
 
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

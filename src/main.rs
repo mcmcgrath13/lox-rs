@@ -6,12 +6,14 @@ use colored::Colorize;
 
 use crate::interpreter::Interpreter;
 use crate::parser::Parser;
+use crate::resolver::Resolver;
 use crate::scanner::Scanner;
 
 mod ast;
 mod environment;
 mod interpreter;
 mod parser;
+mod resolver;
 mod scanner;
 mod token;
 mod types;
@@ -83,8 +85,20 @@ impl RunTime {
             println!("{}", stmt.print());
         }
 
+        let mut resolver = Resolver::new();
+        let (locals, resolve_errs) = resolver.resolve(&ast);
+        for err in resolve_errs {
+            self.error(err)
+        }
+
+        // short circuit at this point if we've had errors
+        if self.had_error {
+            eprintln!("{}", "\nOH NO! we had an error!".bold().red());
+            return;
+        }
+
         println!("{}", "\nResult:".bold().green());
-        if let Err(err) = self.interpreter.interpret(ast) {
+        if let Err(err) = self.interpreter.interpret(ast, locals) {
             self.runtime_error(err);
         }
     }

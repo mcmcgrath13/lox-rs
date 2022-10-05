@@ -451,7 +451,7 @@ impl<'code> Parser<'code> {
             },
             None => Stmt::While {
                 condition: Expr::Literal {
-                    value: Token::new(TokenType::True, "true", line),
+                    value: Token::new(TokenType::True, "true", line, 0),
                 },
                 body: Box::new(body),
             },

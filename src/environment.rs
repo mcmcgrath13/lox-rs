@@ -37,6 +37,17 @@ impl Environment {
         }
     }
 
+    pub fn get_at(&self, distance: usize, name: &Token) -> Option<LoxValue> {
+        if distance == 0 {
+            return self.values.get(&name.lexeme).cloned();
+        }
+
+        match &self.enclosing {
+            Some(e) => e.borrow().get_at(distance - 1, name),
+            None => None,
+        }
+    }
+
     pub fn assign(&mut self, name: &Token, value: LoxValue) -> Option<()> {
         if self.values.contains_key(&name.lexeme) {
             self.values.insert(name.lexeme.clone(), value);
@@ -48,5 +59,17 @@ impl Environment {
         }
 
         None
+    }
+
+    pub fn assign_at(&mut self, distance: usize, name: &Token, value: LoxValue) -> Option<()> {
+        if distance == 0 {
+            self.values.insert(name.lexeme.clone(), value);
+            return Some(());
+        }
+
+        match &self.enclosing {
+            Some(e) => e.borrow_mut().assign_at(distance - 1, name, value),
+            None => None,
+        }
     }
 }

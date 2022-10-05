@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 
@@ -26,6 +27,7 @@ pub trait Callable: fmt::Debug {
         interpreter: &Interpreter,
         arguments: &[LoxValue],
         line: usize,
+        locals: &HashMap<Token, usize>,
     ) -> Result<LoxValue, InterpreterError>;
 }
 
@@ -60,9 +62,10 @@ impl Callable for LoxValue {
         interpreter: &Interpreter,
         arguments: &[LoxValue],
         line: usize,
+        locals: &HashMap<Token, usize>,
     ) -> Result<LoxValue, InterpreterError> {
         match self {
-            LoxValue::Function(callable) => callable.call(interpreter, arguments, line),
+            LoxValue::Function(callable) => callable.call(interpreter, arguments, line, locals),
             _ => Err(InterpreterError::new(
                 line,
                 self.location(),
@@ -74,7 +77,6 @@ impl Callable for LoxValue {
 
 impl PartialEq for LoxValue {
     fn eq(&self, other: &Self) -> bool {
-        println!("{} {}", self, other);
         match (self, other) {
             (LoxValue::Nil, LoxValue::Nil) => false,
             (LoxValue::Boolean(a), LoxValue::Boolean(b)) => a == b,
@@ -149,6 +151,7 @@ impl Callable for NativeFunction {
         _interpreter: &Interpreter,
         arguments: &[LoxValue],
         line: usize,
+        _locals: &HashMap<Token, usize>,
     ) -> Result<LoxValue, InterpreterError> {
         self.check_arity(arguments, line)?;
         match (self.body)(arguments) {
@@ -198,6 +201,7 @@ impl Callable for UserFunction {
         interpreter: &Interpreter,
         arguments: &[LoxValue],
         line: usize,
+        locals: &HashMap<Token, usize>,
     ) -> Result<LoxValue, InterpreterError> {
         self.check_arity(arguments, line)?;
 
@@ -213,7 +217,7 @@ impl Callable for UserFunction {
             );
         }
 
-        match interpreter.execute_block(&self.body, Rc::clone(&environment)) {
+        match interpreter.execute_block(&self.body, Rc::clone(&environment), locals) {
             Ok(()) => Ok(LoxValue::Nil),
             Err(e) => match e {
                 InterpreterError::Return { value } => Ok(value),

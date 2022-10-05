@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -98,9 +99,13 @@ impl Interpreter {
         }
     }
 
-    pub fn interpret(&self, stmts: Vec<Stmt>) -> Result<(), InterpreterError> {
+    pub fn interpret(
+        &self,
+        stmts: Vec<Stmt>,
+        locals: &HashMap<Token, usize>,
+    ) -> Result<(), InterpreterError> {
         for stmt in stmts {
-            self.execute(stmt, Rc::clone(&self.environment))?;
+            self.execute(stmt, Rc::clone(&self.environment), locals)?;
         }
 
         Ok(())
@@ -110,13 +115,14 @@ impl Interpreter {
         &self,
         stmt: Stmt,
         environment: Rc<RefCell<Environment>>,
+        locals: &HashMap<Token, usize>,
     ) -> Result<(), InterpreterError> {
         match stmt {
             Stmt::Block { statements } => {
-                self.execute_block(&statements, Rc::clone(&environment))?;
+                self.execute_block(&statements, Rc::clone(&environment), locals)?;
             }
             Stmt::Expression { expression } => {
-                self.evaluate(expression, Rc::clone(&environment))?;
+                self.evaluate(expression, Rc::clone(&environment), locals)?;
             }
             Stmt::Function {
                 name,
@@ -136,20 +142,20 @@ impl Interpreter {
                 then_branch,
                 else_branch,
             } => {
-                if is_truthy(&self.evaluate(condition, Rc::clone(&environment))?) {
-                    self.execute(*then_branch, Rc::clone(&environment))?;
+                if is_truthy(&self.evaluate(condition, Rc::clone(&environment), locals)?) {
+                    self.execute(*then_branch, Rc::clone(&environment), locals)?;
                 } else if let Some(e) = else_branch {
-                    self.execute(*e, Rc::clone(&environment))?;
+                    self.execute(*e, Rc::clone(&environment), locals)?;
                 }
             }
             Stmt::Print { expression } => {
-                let value = self.evaluate(expression, Rc::clone(&environment))?;
+                let value = self.evaluate(expression, Rc::clone(&environment), locals)?;
                 println!("{}", value);
             }
             Stmt::Return { value, .. } => {
                 let result = match value {
                     None => LoxValue::Nil,
-                    Some(expr) => self.evaluate(expr, Rc::clone(&environment))?,
+                    Some(expr) => self.evaluate(expr, Rc::clone(&environment), locals)?,
                 };
                 // this is hacking into error bubbling up for the return code path
                 // not a true exception
@@ -158,14 +164,18 @@ impl Interpreter {
             Stmt::Var { name, initializer } => {
                 let mut value = LoxValue::Nil;
                 if let Some(expr) = initializer {
-                    value = self.evaluate(expr, Rc::clone(&environment))?;
+                    value = self.evaluate(expr, Rc::clone(&environment), locals)?;
                 }
 
                 environment.borrow_mut().define(&name, value);
             }
             Stmt::While { condition, body } => {
-                while is_truthy(&self.evaluate(condition.clone(), Rc::clone(&environment))?) {
-                    self.execute(*body.clone(), Rc::clone(&environment))?;
+                while is_truthy(&self.evaluate(
+                    condition.clone(),
+                    Rc::clone(&environment),
+                    locals,
+                )?) {
+                    self.execute(*body.clone(), Rc::clone(&environment), locals)?;
                 }
             }
         };
@@ -177,12 +187,13 @@ impl Interpreter {
         &self,
         statements: &Vec<Stmt>,
         environment: Rc<RefCell<Environment>>,
+        locals: &HashMap<Token, usize>,
     ) -> Result<(), InterpreterError> {
         let block_environment = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(
             &environment,
         )))));
         for statement in statements {
-            self.execute(statement.clone(), Rc::clone(&block_environment))?;
+            self.execute(statement.clone(), Rc::clone(&block_environment), locals)?;
         }
         Ok(())
     }
@@ -191,18 +202,33 @@ impl Interpreter {
         &self,
         expr: Expr,
         environment: Rc<RefCell<Environment>>,
+        locals: &HashMap<Token, usize>,
     ) -> Result<LoxValue, InterpreterError> {
         match expr {
             Expr::Assign { name, value } => {
-                let v = self.evaluate(*value, Rc::clone(&environment))?;
-                if environment.borrow_mut().assign(&name, v.clone()).is_none() {
-                    return Err(InterpreterError::from_token(&name, "undefined variable"));
+                let v = self.evaluate(*value, Rc::clone(&environment), locals)?;
+                match locals.get(&name) {
+                    Some(distance) => {
+                        if environment
+                            .borrow_mut()
+                            .assign_at(*distance, &name, v.clone())
+                            .is_none()
+                        {
+                            return Err(InterpreterError::from_token(&name, "undefined variable"));
+                        }
+                    }
+                    None => {
+                        if self.globals.borrow_mut().assign(&name, v.clone()).is_none() {
+                            return Err(InterpreterError::from_token(&name, "undefined variable"));
+                        }
+                    }
                 }
+
                 Ok(v)
             }
             Expr::Binary { left, right, op } => {
-                let left_val = self.evaluate(*left, Rc::clone(&environment))?;
-                let right_val = self.evaluate(*right, Rc::clone(&environment))?;
+                let left_val = self.evaluate(*left, Rc::clone(&environment), locals)?;
+                let right_val = self.evaluate(*right, Rc::clone(&environment), locals)?;
 
                 match (&op.t, left_val, right_val) {
                     // subtraction
@@ -295,19 +321,21 @@ impl Interpreter {
                 paren,
                 arguments,
             } => {
-                let callable = self.evaluate(*callee, Rc::clone(&environment))?;
+                let callable = self.evaluate(*callee, Rc::clone(&environment), locals)?;
 
                 let mut argument_vals = Vec::new();
                 for argument in arguments {
-                    argument_vals.push(self.evaluate(argument, Rc::clone(&environment))?);
+                    argument_vals.push(self.evaluate(argument, Rc::clone(&environment), locals)?);
                 }
 
-                callable.call(self, &argument_vals, paren.line)
+                callable.call(self, &argument_vals, paren.line, locals)
             }
-            Expr::Grouping { expression } => self.evaluate(*expression, environment),
+            Expr::Grouping { expression } => {
+                self.evaluate(*expression, Rc::clone(&environment), locals)
+            }
             Expr::Literal { value } => (&value).try_into(),
             Expr::Logical { left, op, right } => {
-                let left_val = self.evaluate(*left, Rc::clone(&environment))?;
+                let left_val = self.evaluate(*left, Rc::clone(&environment), locals)?;
                 match op.t {
                     TokenType::Or => {
                         if is_truthy(&left_val) {
@@ -327,10 +355,10 @@ impl Interpreter {
                     }
                 }
 
-                Ok(self.evaluate(*right, Rc::clone(&environment))?)
+                Ok(self.evaluate(*right, Rc::clone(&environment), locals)?)
             }
             Expr::Unary { op, right } => {
-                let right_val = self.evaluate(*right, Rc::clone(&environment))?;
+                let right_val = self.evaluate(*right, Rc::clone(&environment), locals)?;
                 match (&op.t, right_val) {
                     (TokenType::Minus, LoxValue::Number(n)) => Ok(LoxValue::Number(-1.0 * n)),
                     (TokenType::Minus, _) => Err(InterpreterError::from_token(
@@ -341,9 +369,24 @@ impl Interpreter {
                     _ => Err(InterpreterError::from_token(&op, "Unknown unary operator")),
                 }
             }
-            Expr::Variable { name } => match environment.borrow().get(&name) {
-                Some(value) => Ok(value),
-                None => Err(InterpreterError::from_token(&name, "Unknown variable")),
+            Expr::Variable { name } => self.lookup_variable(&name, Rc::clone(&environment), locals),
+        }
+    }
+
+    fn lookup_variable(
+        &self,
+        name: &Token,
+        environment: Rc<RefCell<Environment>>,
+        locals: &HashMap<Token, usize>,
+    ) -> Result<LoxValue, InterpreterError> {
+        match locals.get(name) {
+            Some(distance) => match environment.borrow().get_at(*distance, name) {
+                Some(v) => Ok(v),
+                None => panic!("resolver doesn't match intepreter!!!"),
+            },
+            None => match self.globals.borrow().get(name) {
+                Some(v) => Ok(v),
+                None => Err(InterpreterError::from_token(name, "undefined variable")),
             },
         }
     }

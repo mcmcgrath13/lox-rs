@@ -33,6 +33,7 @@ impl Reportable for ResolveError {
 pub enum FunctionType {
     None,
     Function,
+    Initializer,
     Method,
 }
 
@@ -97,9 +98,16 @@ impl Resolver {
                 for method in methods {
                     match method {
                         Stmt::Function {
-                            parameters, body, ..
+                            parameters,
+                            body,
+                            name,
                         } => {
-                            self.resolve_function(parameters, body, FunctionType::Method)?;
+                            let function_type = if name.lexeme == "init" {
+                                FunctionType::Initializer
+                            } else {
+                                FunctionType::Method
+                            };
+                            self.resolve_function(parameters, body, function_type)?;
                         }
                         _ => {
                             return Err(ResolveError::from_token(
@@ -139,18 +147,24 @@ impl Resolver {
             Stmt::Print { expression } => {
                 self.resolve_expression(expression)?;
             }
-            Stmt::Return { value, keyword } => {
-                if let FunctionType::None = self.current_function {
+            Stmt::Return { value, keyword } => match (self.current_function, value) {
+                (FunctionType::None, _) => {
                     return Err(ResolveError::from_token(
                         keyword,
                         "can't return from top level code",
-                    ));
+                    ))
                 }
-
-                if let Some(expression) = value {
+                (FunctionType::Initializer, Some(_)) => {
+                    return Err(ResolveError::from_token(
+                        keyword,
+                        "can't return a value from a class initializer",
+                    ))
+                }
+                (_, Some(expression)) => {
                     self.resolve_expression(expression)?;
                 }
-            }
+                _ => {}
+            },
             Stmt::Var { name, initializer } => {
                 self.declare(name)?;
                 if let Some(v) = initializer {

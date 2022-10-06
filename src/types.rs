@@ -194,6 +194,7 @@ pub struct UserFunction {
     parameters: Vec<Token>,
     body: Vec<Stmt>,
     closure: Rc<RefCell<Environment>>,
+    is_initializer: bool,
 }
 
 impl UserFunction {
@@ -202,12 +203,14 @@ impl UserFunction {
         parameters: Vec<Token>,
         body: Vec<Stmt>,
         closure: Rc<RefCell<Environment>>,
+        is_initializer: bool,
     ) -> Self {
         Self {
             name,
             parameters,
             body,
             closure: Rc::clone(&closure),
+            is_initializer,
         }
     }
 
@@ -223,6 +226,7 @@ impl UserFunction {
             self.parameters.clone(),
             self.body.clone(),
             environment,
+            self.is_initializer,
         )
     }
 }
@@ -257,13 +261,31 @@ impl Callable for UserFunction {
             );
         }
 
-        match interpreter.execute_block(&self.body, Rc::clone(&environment), locals) {
-            Ok(()) => Ok(LoxValue::Nil),
-            Err(e) => match e {
-                InterpreterError::Return { value } => Ok(value),
-                _ => Err(e),
-            },
+        let mut return_value = LoxValue::Nil;
+        if let Err(e) = interpreter.execute_block(&self.body, Rc::clone(&environment), locals) {
+            match e {
+                InterpreterError::Return { value } => {
+                    return_value = value;
+                }
+                _ => return Err(e),
+            }
         }
+
+        if self.is_initializer {
+            match self.closure.borrow().get_at_name(0, &"this".to_string()) {
+                Some(v) => {
+                    return_value = v;
+                }
+                None => {
+                    return Err(InterpreterError::from_token(
+                        &self.name,
+                        "'this' not found in closure of initializing method",
+                    ))
+                }
+            }
+        }
+
+        Ok(return_value)
     }
 }
 
@@ -282,11 +304,18 @@ impl Class {
             methods: Rc::new(RefCell::new(methods)),
         }
     }
+
+    pub fn find_method(&self, name: &String) -> Option<LoxValue> {
+        self.methods.borrow().get(name).cloned()
+    }
 }
 
 impl Callable for Class {
     fn arity(&self) -> usize {
-        0
+        match self.find_method(&"init".to_string()) {
+            Some(v) => v.arity(),
+            None => 0,
+        }
     }
 
     fn location(&self) -> String {
@@ -295,17 +324,22 @@ impl Callable for Class {
 
     fn call(
         &self,
-        _interpreter: &Interpreter,
+        interpreter: &Interpreter,
         arguments: &[LoxValue],
         line: usize,
-        _locals: &HashMap<Token, usize>,
+        locals: &HashMap<Token, usize>,
     ) -> Result<LoxValue, InterpreterError> {
         self.check_arity(arguments, line)?;
 
-        Ok(LoxValue::Instance(Instance::new(
-            self.name.lexeme.to_string(),
-            Rc::clone(&self.methods),
-        )))
+        let instance = Instance::new(self.name.lexeme.to_string(), Rc::clone(&self.methods));
+
+        if let Some(initializer) = self.find_method(&"init".to_string()) {
+            initializer
+                .bind(instance.clone())?
+                .call(interpreter, arguments, line, locals)?;
+        }
+
+        Ok(LoxValue::Instance(instance))
     }
 }
 

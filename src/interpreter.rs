@@ -137,6 +137,7 @@ impl Interpreter {
                                 parameters,
                                 body,
                                 Rc::clone(&environment),
+                                method_name.lexeme == "init",
                             ));
                             method_map.insert(method_name.lexeme.to_string(), function);
                         }
@@ -165,6 +166,7 @@ impl Interpreter {
                     parameters,
                     body,
                     Rc::clone(&environment),
+                    false,
                 ));
                 environment.borrow_mut().define(&name, function);
             }

@@ -10,3 +10,15 @@ cake.flavor = "German chocolate";
 cake.taste(); // Prints "The German chocolate cake is delicious!".
 cake.flavor = "funfetti";
 cake.taste();
+
+
+class Foo {
+  init() {
+    print "foo";
+    return;
+    // shouldn't print
+    print "bar";
+  }
+}
+
+Foo();

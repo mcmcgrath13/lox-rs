@@ -38,12 +38,16 @@ impl Environment {
     }
 
     pub fn get_at(&self, distance: usize, name: &Token) -> Option<LoxValue> {
+        self.get_at_name(distance, &name.lexeme)
+    }
+
+    pub fn get_at_name(&self, distance: usize, name: &String) -> Option<LoxValue> {
         if distance == 0 {
-            return self.values.get(&name.lexeme).cloned();
+            return self.values.get(name).cloned();
         }
 
         match &self.enclosing {
-            Some(e) => e.borrow().get_at(distance - 1, name),
+            Some(e) => e.borrow().get_at_name(distance - 1, name),
             None => None,
         }
     }

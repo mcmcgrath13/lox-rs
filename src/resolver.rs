@@ -33,12 +33,21 @@ impl Reportable for ResolveError {
 pub enum FunctionType {
     None,
     Function,
+    Initializer,
+    Method,
+}
+
+#[derive(Clone, Copy)]
+pub enum ClassType {
+    None,
+    Class,
 }
 
 pub struct Resolver {
     stack: Vec<HashMap<String, bool>>,
     locals: HashMap<Token, usize>,
     current_function: FunctionType,
+    current_class: ClassType,
 }
 
 impl Resolver {
@@ -47,6 +56,7 @@ impl Resolver {
             stack: Vec::new(),
             locals: HashMap::new(),
             current_function: FunctionType::None,
+            current_class: ClassType::None,
         }
     }
 
@@ -72,6 +82,44 @@ impl Resolver {
                     self.resolve_statement(statement)?;
                 }
                 self.end_scope();
+            }
+            Stmt::Class { name, methods } => {
+                let enclosing_class = self.current_class;
+                self.current_class = ClassType::Class;
+
+                self.declare(name)?;
+                self.define(name);
+
+                self.begin_scope();
+                if let Some(scope) = self.stack.last_mut() {
+                    scope.insert("this".to_string(), true);
+                }
+
+                for method in methods {
+                    match method {
+                        Stmt::Function {
+                            parameters,
+                            body,
+                            name,
+                        } => {
+                            let function_type = if name.lexeme == "init" {
+                                FunctionType::Initializer
+                            } else {
+                                FunctionType::Method
+                            };
+                            self.resolve_function(parameters, body, function_type)?;
+                        }
+                        _ => {
+                            return Err(ResolveError::from_token(
+                                name,
+                                "only methods are allowed in classes",
+                            ))
+                        }
+                    }
+                }
+
+                self.end_scope();
+                self.current_class = enclosing_class;
             }
             Stmt::Expression { expression } => {
                 self.resolve_expression(expression)?;
@@ -99,18 +147,24 @@ impl Resolver {
             Stmt::Print { expression } => {
                 self.resolve_expression(expression)?;
             }
-            Stmt::Return { value, keyword } => {
-                if let FunctionType::None = self.current_function {
+            Stmt::Return { value, keyword } => match (self.current_function, value) {
+                (FunctionType::None, _) => {
                     return Err(ResolveError::from_token(
                         keyword,
                         "can't return from top level code",
-                    ));
+                    ))
                 }
-
-                if let Some(expression) = value {
+                (FunctionType::Initializer, Some(_)) => {
+                    return Err(ResolveError::from_token(
+                        keyword,
+                        "can't return a value from a class initializer",
+                    ))
+                }
+                (_, Some(expression)) => {
                     self.resolve_expression(expression)?;
                 }
-            }
+                _ => {}
+            },
             Stmt::Var { name, initializer } => {
                 self.declare(name)?;
                 if let Some(v) = initializer {
@@ -146,8 +200,8 @@ impl Resolver {
                     self.resolve_expression(argument)?;
                 }
             }
-            Expr::Unary { right, .. } => {
-                self.resolve_expression(&**right)?;
+            Expr::Get { object, .. } => {
+                self.resolve_expression(&**object)?;
             }
             Expr::Grouping { expression } => {
                 self.resolve_expression(&**expression)?;
@@ -155,6 +209,22 @@ impl Resolver {
             Expr::Literal { .. } => {}
             Expr::Logical { left, right, .. } => {
                 self.resolve_expression(&**left)?;
+                self.resolve_expression(&**right)?;
+            }
+            Expr::Set { object, value, .. } => {
+                self.resolve_expression(&**object)?;
+                self.resolve_expression(&**value)?;
+            }
+            Expr::This { keyword } => {
+                if let ClassType::None = self.current_class {
+                    return Err(ResolveError::from_token(
+                        keyword,
+                        "can't use 'this' outside of a class",
+                    ));
+                }
+                self.resolve_local(keyword);
+            }
+            Expr::Unary { right, .. } => {
                 self.resolve_expression(&**right)?;
             }
             Expr::Variable { name } => {

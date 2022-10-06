@@ -39,20 +39,40 @@ pub enum LoxValue {
     Nil,
     Number(f64),
     String(String),
-    Function(Rc<Box<dyn Callable>>),
+    Function(UserFunction),
+    Builtin(NativeFunction),
+    Class(Class),
+    Instance(Instance),
+}
+
+impl LoxValue {
+    pub fn bind(&self, instance: Instance) -> Result<Self, InterpreterError> {
+        match self {
+            LoxValue::Function(f) => Ok(LoxValue::Function(f.bind(instance))),
+            _ => Err(InterpreterError::new(
+                0,
+                "somewhere",
+                "can only bind an instance to a function",
+            )),
+        }
+    }
 }
 
 impl Callable for LoxValue {
     fn arity(&self) -> usize {
         match self {
+            LoxValue::Class(c) => c.arity(),
             LoxValue::Function(f) => f.arity(),
+            LoxValue::Builtin(f) => f.arity(),
             _ => 0,
         }
     }
 
     fn location(&self) -> String {
         match self {
+            LoxValue::Class(c) => c.location(),
             LoxValue::Function(f) => f.location(),
+            LoxValue::Builtin(f) => f.location(),
             _ => "".to_string(),
         }
     }
@@ -65,7 +85,9 @@ impl Callable for LoxValue {
         locals: &HashMap<Token, usize>,
     ) -> Result<LoxValue, InterpreterError> {
         match self {
+            LoxValue::Class(callable) => callable.call(interpreter, arguments, line, locals),
             LoxValue::Function(callable) => callable.call(interpreter, arguments, line, locals),
+            LoxValue::Builtin(callable) => callable.call(interpreter, arguments, line, locals),
             _ => Err(InterpreterError::new(
                 line,
                 self.location(),
@@ -111,6 +133,9 @@ impl fmt::Display for LoxValue {
             LoxValue::Boolean(v) => write!(f, "{}", v),
             LoxValue::Nil => write!(f, "nil"),
             LoxValue::Function(fun) => write!(f, "<fun {}>", fun.location()),
+            LoxValue::Builtin(fun) => write!(f, "{}", fun.location()),
+            LoxValue::Class(c) => write!(f, "<class {}>", c.location()),
+            LoxValue::Instance(i) => write!(f, "<instance of {}>", i.name),
         }
     }
 }
@@ -169,6 +194,7 @@ pub struct UserFunction {
     parameters: Vec<Token>,
     body: Vec<Stmt>,
     closure: Rc<RefCell<Environment>>,
+    is_initializer: bool,
 }
 
 impl UserFunction {
@@ -177,13 +203,31 @@ impl UserFunction {
         parameters: Vec<Token>,
         body: Vec<Stmt>,
         closure: Rc<RefCell<Environment>>,
+        is_initializer: bool,
     ) -> Self {
         Self {
             name,
             parameters,
             body,
             closure: Rc::clone(&closure),
+            is_initializer,
         }
+    }
+
+    pub fn bind(&self, instance: Instance) -> Self {
+        let environment = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(
+            &self.closure,
+        )))));
+        environment
+            .borrow_mut()
+            .define_name("this", LoxValue::Instance(instance));
+        UserFunction::new(
+            self.name.clone(),
+            self.parameters.clone(),
+            self.body.clone(),
+            environment,
+            self.is_initializer,
+        )
     }
 }
 
@@ -217,12 +261,124 @@ impl Callable for UserFunction {
             );
         }
 
-        match interpreter.execute_block(&self.body, Rc::clone(&environment), locals) {
-            Ok(()) => Ok(LoxValue::Nil),
-            Err(e) => match e {
-                InterpreterError::Return { value } => Ok(value),
-                _ => Err(e),
-            },
+        let mut return_value = LoxValue::Nil;
+        if let Err(e) = interpreter.execute_block(&self.body, Rc::clone(&environment), locals) {
+            match e {
+                InterpreterError::Return { value } => {
+                    return_value = value;
+                }
+                _ => return Err(e),
+            }
         }
+
+        if self.is_initializer {
+            match self.closure.borrow().get_at_name(0, &"this".to_string()) {
+                Some(v) => {
+                    return_value = v;
+                }
+                None => {
+                    return Err(InterpreterError::from_token(
+                        &self.name,
+                        "'this' not found in closure of initializing method",
+                    ))
+                }
+            }
+        }
+
+        Ok(return_value)
+    }
+}
+
+// ========== CLASS ===========
+
+#[derive(Clone, Debug)]
+pub struct Class {
+    name: Token,
+    methods: Rc<RefCell<HashMap<String, LoxValue>>>,
+}
+
+impl Class {
+    pub fn new(name: Token, methods: HashMap<String, LoxValue>) -> Self {
+        Self {
+            name,
+            methods: Rc::new(RefCell::new(methods)),
+        }
+    }
+
+    pub fn find_method(&self, name: &String) -> Option<LoxValue> {
+        self.methods.borrow().get(name).cloned()
+    }
+}
+
+impl Callable for Class {
+    fn arity(&self) -> usize {
+        match self.find_method(&"init".to_string()) {
+            Some(v) => v.arity(),
+            None => 0,
+        }
+    }
+
+    fn location(&self) -> String {
+        format!("<fn {}>", self.name.lexeme)
+    }
+
+    fn call(
+        &self,
+        interpreter: &Interpreter,
+        arguments: &[LoxValue],
+        line: usize,
+        locals: &HashMap<Token, usize>,
+    ) -> Result<LoxValue, InterpreterError> {
+        self.check_arity(arguments, line)?;
+
+        let instance = Instance::new(self.name.lexeme.to_string(), Rc::clone(&self.methods));
+
+        if let Some(initializer) = self.find_method(&"init".to_string()) {
+            initializer
+                .bind(instance.clone())?
+                .call(interpreter, arguments, line, locals)?;
+        }
+
+        Ok(LoxValue::Instance(instance))
+    }
+}
+
+// ========== INSTANCE ===========
+#[derive(Clone, Debug)]
+pub struct Instance {
+    name: String,
+    fields: Rc<RefCell<HashMap<String, LoxValue>>>,
+    methods: Rc<RefCell<HashMap<String, LoxValue>>>,
+}
+
+impl Instance {
+    pub fn new(name: String, methods: Rc<RefCell<HashMap<String, LoxValue>>>) -> Self {
+        Self {
+            name,
+            fields: Rc::new(RefCell::new(HashMap::new())),
+            methods,
+        }
+    }
+
+    pub fn get(&self, name: &Token) -> Result<LoxValue, InterpreterError> {
+        if let Some(v) = self.fields.borrow().get(&name.lexeme) {
+            return Ok(v.clone());
+        }
+
+        if let Some(m) = self.find_method(name) {
+            return m.bind(self.clone());
+        };
+
+        Err(InterpreterError::from_token(name, "undefined property"))
+    }
+
+    pub fn set(&mut self, name: &Token, value: LoxValue) {
+        self.fields
+            .borrow_mut()
+            .insert(name.lexeme.to_string(), value);
+    }
+
+    pub fn find_method(&self, name: &Token) -> Option<LoxValue> {
+        self.methods.borrow().get(&name.lexeme).cloned()
     }
 }

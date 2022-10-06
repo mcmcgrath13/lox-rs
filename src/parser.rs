@@ -65,6 +65,10 @@ impl<'code> Parser<'code> {
             return Ok(None);
         };
 
+        if self.match_next(&[TokenType::Class]).is_some() {
+            return Ok(Some(self.class_declaration()?));
+        }
+
         if self.match_next(&[TokenType::Fun]).is_some() {
             return Ok(Some(self.function_declaration("function")?));
         }
@@ -116,17 +120,27 @@ impl<'code> Parser<'code> {
         if self.match_next(&[TokenType::Equal]).is_some() {
             let value = self.assignment()?;
 
-            if let Expr::Variable { name } = expr {
-                return Ok(Expr::Assign {
-                    name,
-                    value: Box::new(value),
-                });
+            match expr {
+                Expr::Variable { name } => {
+                    return Ok(Expr::Assign {
+                        name,
+                        value: Box::new(value),
+                    })
+                }
+                Expr::Get { object, name } => {
+                    return Ok(Expr::Set {
+                        object,
+                        name,
+                        value: Box::new(value),
+                    });
+                }
+                _ => {
+                    return Err(ParseError::from_token(
+                        self.previous(),
+                        "Invalid assignment target",
+                    ));
+                }
             }
-
-            return Err(ParseError::from_token(
-                self.previous(),
-                "Invalid assignment target",
-            ));
         }
 
         Ok(expr)
@@ -240,8 +254,18 @@ impl<'code> Parser<'code> {
     fn call(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.primary()?;
 
-        while let Some(t) = self.match_next(&[TokenType::LeftParen]) {
-            expr = self.finish_call(expr, t)?;
+        loop {
+            if let Some(t) = self.match_next(&[TokenType::LeftParen]) {
+                expr = self.finish_call(expr, t)?;
+            } else if self.match_next(&[TokenType::Dot]).is_some() {
+                let name = self.consume(TokenType::Identifier, "expect property name after '.")?;
+                expr = Expr::Get {
+                    name,
+                    object: Box::new(expr),
+                };
+            } else {
+                break;
+            }
         }
 
         Ok(expr)
@@ -274,6 +298,10 @@ impl<'code> Parser<'code> {
             return Ok(Expr::Variable { name });
         }
 
+        if let Some(keyword) = self.match_next(&[TokenType::This]) {
+            return Ok(Expr::This { keyword });
+        }
+
         Err(ParseError::from_token(
             self.peek(),
             "Unterminated expression",
@@ -281,6 +309,20 @@ impl<'code> Parser<'code> {
     }
 
     // statement parsing helpers
+    fn class_declaration(&mut self) -> Result<Stmt, ParseError> {
+        let name = self.consume(TokenType::Identifier, "expect class name")?;
+
+        self.consume(TokenType::LeftBrace, "expect '{{' before class body")?;
+        let mut methods = Vec::new();
+        while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
+            methods.push(self.function_declaration("method")?)
+        }
+
+        self.consume(TokenType::RightBrace, "expect '}}' after class body")?;
+
+        Ok(Stmt::Class { name, methods })
+    }
+
     fn function_declaration(
         &mut self,
         kind: impl AsRef<str> + std::fmt::Display,

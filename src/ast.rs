@@ -17,6 +17,10 @@ pub enum Expr {
         paren: Token,
         arguments: Vec<Expr>,
     },
+    Get {
+        object: Box<Expr>,
+        name: Token,
+    },
     Grouping {
         expression: Box<Expr>,
     },
@@ -27,6 +31,14 @@ pub enum Expr {
         left: Box<Expr>,
         op: Token,
         right: Box<Expr>,
+    },
+    Set {
+        object: Box<Expr>,
+        name: Token,
+        value: Box<Expr>,
+    },
+    This {
+        keyword: Token,
     },
     Unary {
         op: Token,
@@ -49,12 +61,24 @@ impl PrettyPrinting for Expr {
             } => {
                 format!("({} {})", callee.print(), arguments.print())
             }
-            Expr::Unary { right, op } => format!("({} {})", op.print(), right.print()),
+            Expr::Get { object, name } => format!("(get {} {})", name.print(), object.print()),
             Expr::Grouping { expression } => format!("(group {})", expression.print()),
             Expr::Literal { value } => value.print(),
             Expr::Logical { left, op, right } => {
                 format!("({} {} {})", op.print(), left.print(), right.print())
             }
+            Expr::Set {
+                object,
+                name,
+                value,
+            } => format!(
+                "(set {} {} {})",
+                name.print(),
+                object.print(),
+                value.print()
+            ),
+            Expr::This { keyword } => keyword.print(),
+            Expr::Unary { right, op } => format!("({} {})", op.print(), right.print()),
             Expr::Variable { name } => name.print(),
         }
     }
@@ -64,6 +88,10 @@ impl PrettyPrinting for Expr {
 pub enum Stmt {
     Block {
         statements: Vec<Stmt>,
+    },
+    Class {
+        name: Token,
+        methods: Vec<Stmt>, // specifically Stmt::Function
     },
     Expression {
         expression: Expr,
@@ -98,9 +126,8 @@ pub enum Stmt {
 impl PrettyPrinting for Stmt {
     fn print(&self) -> String {
         match self {
-            Stmt::Block { statements } => {
-                format!("(block {})", statements.print())
-            }
+            Stmt::Block { statements } => format!("(block {})", statements.print()),
+            Stmt::Class { name, methods } => format!("({} {})", name.print(), methods.print()),
             Stmt::Expression { expression } => format!("(; {})", expression.print()),
             Stmt::Function {
                 name,

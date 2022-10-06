@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::ast::{Expr, Stmt};
 use crate::environment::Environment;
 use crate::token::{Token, TokenType};
-use crate::types::{Callable, LoxValue, NativeFunction, UserFunction};
+use crate::types::{Callable, Class, LoxValue, NativeFunction, UserFunction};
 use crate::Reportable;
 
 fn is_truthy(val: &LoxValue) -> bool {
@@ -81,7 +81,7 @@ impl Interpreter {
         // move this if there are ever more native functions
         globals.borrow_mut().define_name(
             "clock",
-            LoxValue::Function(Rc::new(Box::new(NativeFunction::new(
+            LoxValue::Builtin(NativeFunction::new(
                 |_arguments: &[LoxValue]| -> Result<LoxValue, String> {
                     let start = SystemTime::now();
                     let since_the_epoch = start
@@ -90,7 +90,7 @@ impl Interpreter {
                     Ok(LoxValue::Number(since_the_epoch.as_secs() as f64))
                 },
                 0,
-            )))),
+            )),
         );
 
         Self {
@@ -121,6 +121,37 @@ impl Interpreter {
             Stmt::Block { statements } => {
                 self.execute_block(&statements, Rc::clone(&environment), locals)?;
             }
+            Stmt::Class { name, methods } => {
+                environment.borrow_mut().define(&name, LoxValue::Nil);
+
+                let mut method_map = HashMap::new();
+                for method in methods {
+                    match method {
+                        Stmt::Function {
+                            body,
+                            parameters,
+                            name: method_name,
+                        } => {
+                            let function = LoxValue::Function(UserFunction::new(
+                                method_name.clone(),
+                                parameters,
+                                body,
+                                Rc::clone(&environment),
+                            ));
+                            method_map.insert(method_name.lexeme.to_string(), function);
+                        }
+                        _ => {
+                            return Err(InterpreterError::from_token(
+                                &name,
+                                "only methods allowed in classes",
+                            ));
+                        }
+                    }
+                }
+
+                let class = LoxValue::Class(Class::new(name.clone(), method_map));
+                environment.borrow_mut().assign(&name, class);
+            }
             Stmt::Expression { expression } => {
                 self.evaluate(expression, Rc::clone(&environment), locals)?;
             }
@@ -129,12 +160,12 @@ impl Interpreter {
                 parameters,
                 body,
             } => {
-                let function = LoxValue::Function(Rc::new(Box::new(UserFunction::new(
+                let function = LoxValue::Function(UserFunction::new(
                     name.clone(),
                     parameters,
                     body,
                     Rc::clone(&environment),
-                ))));
+                ));
                 environment.borrow_mut().define(&name, function);
             }
             Stmt::If {
@@ -330,6 +361,16 @@ impl Interpreter {
 
                 callable.call(self, &argument_vals, paren.line, locals)
             }
+            Expr::Get { object, name } => {
+                let object_val = self.evaluate(*object, Rc::clone(&environment), locals)?;
+                match object_val {
+                    LoxValue::Instance(i) => Ok(i.get(&name)?),
+                    _ => Err(InterpreterError::from_token(
+                        &name,
+                        "only instances have properites",
+                    )),
+                }
+            }
             Expr::Grouping { expression } => {
                 self.evaluate(*expression, Rc::clone(&environment), locals)
             }
@@ -356,6 +397,24 @@ impl Interpreter {
                 }
 
                 Ok(self.evaluate(*right, Rc::clone(&environment), locals)?)
+            }
+            Expr::Set {
+                object,
+                name,
+                value,
+            } => match self.evaluate(*object, Rc::clone(&environment), locals)? {
+                LoxValue::Instance(mut i) => {
+                    let value_val = self.evaluate(*value, Rc::clone(&environment), locals)?;
+                    i.set(&name, value_val.clone());
+                    Ok(value_val)
+                }
+                _ => Err(InterpreterError::from_token(
+                    &name,
+                    "only instances have fields",
+                )),
+            },
+            Expr::This { keyword } => {
+                self.lookup_variable(&keyword, Rc::clone(&environment), locals)
             }
             Expr::Unary { op, right } => {
                 let right_val = self.evaluate(*right, Rc::clone(&environment), locals)?;

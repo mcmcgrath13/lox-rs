@@ -303,9 +303,9 @@ impl Resolver {
         Ok(())
     }
 
-    fn define(&mut self, name: &Token) {
+    fn define(&mut self, name: impl AsRef<str>) {
         if let Some(scope) = self.stack.last_mut() {
-            scope.insert(name.lexeme.clone(), true);
+            scope.insert(name.as_ref().to_string(), true);
         }
     }
 }

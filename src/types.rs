@@ -7,6 +7,7 @@ use crate::ast::Stmt;
 use crate::environment::Environment;
 use crate::interpreter::{Interpreter, InterpreterError};
 use crate::token::{Token, TokenType};
+use crate::PrettyPrinting;
 
 pub trait Callable: fmt::Debug {
     fn arity(&self) -> usize;
@@ -120,7 +121,10 @@ impl TryFrom<&Token> for LoxValue {
             TokenType::False => Ok(Self::Boolean(false)),
             TokenType::Number(v) => Ok(Self::Number(*v)),
             TokenType::String(v) => Ok(Self::String(v.to_string())),
-            _ => Err(InterpreterError::from_token(value, "Unexpected value")),
+            _ => Err(InterpreterError::from_token(
+                value,
+                "Unexpected literal value",
+            )),
         }
     }
 }
@@ -220,7 +224,7 @@ impl UserFunction {
         )))));
         environment
             .borrow_mut()
-            .define_name("this", LoxValue::Instance(instance));
+            .define("this", LoxValue::Instance(instance));
         UserFunction::new(
             self.name.clone(),
             self.parameters.clone(),
@@ -272,7 +276,7 @@ impl Callable for UserFunction {
         }
 
         if self.is_initializer {
-            match self.closure.borrow().get_at_name(0, &"this".to_string()) {
+            match self.closure.borrow().get_at(0, "this") {
                 Some(v) => {
                     return_value = v;
                 }
@@ -305,21 +309,21 @@ impl Class {
         }
     }
 
-    pub fn find_method(&self, name: &String) -> Option<LoxValue> {
-        self.methods.borrow().get(name).cloned()
+    pub fn find_method(&self, name: impl AsRef<str>) -> Option<LoxValue> {
+        self.methods.borrow().get(name.as_ref()).cloned()
     }
 }
 
 impl Callable for Class {
     fn arity(&self) -> usize {
-        match self.find_method(&"init".to_string()) {
+        match self.find_method("init") {
             Some(v) => v.arity(),
             None => 0,
         }
     }
 
     fn location(&self) -> String {
-        format!("<fn {}>", self.name.lexeme)
+        self.name.print()
     }
 
     fn call(
@@ -331,9 +335,9 @@ impl Callable for Class {
     ) -> Result<LoxValue, InterpreterError> {
         self.check_arity(arguments, line)?;
 
-        let instance = Instance::new(self.name.lexeme.to_string(), Rc::clone(&self.methods));
+        let instance = Instance::new(&self.name, Rc::clone(&self.methods));
 
-        if let Some(initializer) = self.find_method(&"init".to_string()) {
+        if let Some(initializer) = self.find_method("init") {
             initializer
                 .bind(instance.clone())?
                 .call(interpreter, arguments, line, locals)?;
@@ -352,16 +356,16 @@ pub struct Instance {
 }
 
 impl Instance {
-    pub fn new(name: String, methods: Rc<RefCell<HashMap<String, LoxValue>>>) -> Self {
+    pub fn new(name: impl AsRef<str>, methods: Rc<RefCell<HashMap<String, LoxValue>>>) -> Self {
         Self {
-            name,
+            name: name.as_ref().to_string(),
             fields: Rc::new(RefCell::new(HashMap::new())),
             methods,
         }
     }
 
     pub fn get(&self, name: &Token) -> Result<LoxValue, InterpreterError> {
-        if let Some(v) = self.fields.borrow().get(&name.lexeme) {
+        if let Some(v) = self.fields.borrow().get(name.as_ref()) {
             return Ok(v.clone());
         }
 
@@ -372,13 +376,13 @@ impl Instance {
         Err(InterpreterError::from_token(name, "undefined property"))
     }
 
-    pub fn set(&mut self, name: &Token, value: LoxValue) {
+    pub fn set(&mut self, name: impl AsRef<str>, value: LoxValue) {
         self.fields
             .borrow_mut()
-            .insert(name.lexeme.to_string(), value);
+            .insert(name.as_ref().to_string(), value);
     }
 
-    pub fn find_method(&self, name: &Token) -> Option<LoxValue> {
-        self.methods.borrow().get(&name.lexeme).cloned()
+    pub fn find_method(&self, name: impl AsRef<str>) -> Option<LoxValue> {
+        self.methods.borrow().get(name.as_ref()).cloned()
     }
 }

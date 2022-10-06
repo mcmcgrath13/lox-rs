@@ -184,31 +184,15 @@ mod tests {
     fn test_pretty_print() {
         let expression = Expr::Binary {
             left: Box::new(Expr::Unary {
-                op: Token {
-                    t: TokenType::Minus,
-                    lexeme: "-",
-                    line: 1,
-                },
+                op: Token::new(TokenType::Minus, "-", 1, 0),
                 right: Box::new(Expr::Literal {
-                    value: Token {
-                        t: TokenType::Number(123.0),
-                        lexeme: "45.67",
-                        line: 1,
-                    },
+                    value: Token::new(TokenType::Number(123.0), "123", 1, 1),
                 }),
             }),
-            op: Token {
-                t: TokenType::Star,
-                lexeme: "*",
-                line: 1,
-            },
+            op: Token::new(TokenType::Star, "*", 1, 5),
             right: Box::new(Expr::Grouping {
                 expression: Box::new(Expr::Literal {
-                    value: Token {
-                        t: TokenType::Number(45.67),
-                        lexeme: "45.67",
-                        line: 1,
-                    },
+                    value: Token::new(TokenType::Number(45.67), "45.67", 1, 7),
                 }),
             }),
         };

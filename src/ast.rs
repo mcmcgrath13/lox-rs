@@ -3,8 +3,7 @@ use crate::PrettyPrinting;
 
 #[derive(Clone, Debug)]
 pub enum Expr {
-    Assign {
-        name: Token,
+    Assign {name: Token,
         value: Box<Expr>,
     },
     Binary {

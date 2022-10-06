@@ -274,7 +274,7 @@ impl<'code> Scanner<'code> {
 
         self.advance();
         self.add_token(TokenType::String(
-            (&self.source[self.next_char(self.start)..self.offset_char(self.current, -1)])
+            (self.source[self.next_char(self.start)..self.offset_char(self.current, -1)])
                 .to_string(),
         ));
 

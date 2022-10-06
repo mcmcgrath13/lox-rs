@@ -109,9 +109,12 @@ impl fmt::Display for Token {
 
 impl PrettyPrinting for Token {
     fn print(&self) -> String {
-        match self.t {
-            TokenType::Number(v) => format!("{}", v),
-            _ => self.lexeme.to_string(),
-        }
+        self.lexeme.clone()
+    }
+}
+
+impl AsRef<str> for Token {
+    fn as_ref(&self) -> &str {
+        self.lexeme.as_str()
     }
 }

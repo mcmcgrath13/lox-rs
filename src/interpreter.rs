@@ -79,7 +79,7 @@ impl Interpreter {
         let globals = Rc::new(RefCell::new(Environment::new(None)));
 
         // move this if there are ever more native functions
-        globals.borrow_mut().define_name(
+        globals.borrow_mut().define(
             "clock",
             LoxValue::Builtin(NativeFunction::new(
                 |_arguments: &[LoxValue]| -> Result<LoxValue, String> {

@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::ast::{Expr, Stmt};
 use crate::environment::Environment;
 use crate::token::{Token, TokenType};
-use crate::types::{Callable, Class, LoxValue, NativeFunction, UserFunction};
+use crate::types::{Callable, Class, FindMethod, LoxValue, NativeFunction, UserFunction};
 use crate::Reportable;
 
 fn is_truthy(val: &LoxValue) -> bool {
@@ -121,8 +121,37 @@ impl Interpreter {
             Stmt::Block { statements } => {
                 self.execute_block(&statements, Rc::clone(&environment), locals)?;
             }
-            Stmt::Class { name, methods } => {
-                environment.borrow_mut().define(&name, LoxValue::Nil);
+            Stmt::Class {
+                name,
+                super_class,
+                methods,
+            } => {
+                let (super_class_class, class_environment) =
+                    if let Some(super_class_expr) = super_class {
+                        let super_class_value =
+                            self.evaluate(super_class_expr, Rc::clone(&environment), locals)?;
+                        let super_class_class = match &super_class_value {
+                            LoxValue::Class(c) => Some(Rc::clone(c)),
+                            _ => {
+                                return Err(InterpreterError::from_token(
+                                    &name,
+                                    "super class must be a class",
+                                ))
+                            }
+                        };
+
+                        environment.borrow_mut().define(&name, LoxValue::Nil);
+
+                        let env = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(
+                            &environment,
+                        )))));
+                        env.borrow_mut().define("super", super_class_value);
+
+                        (super_class_class, env)
+                    } else {
+                        environment.borrow_mut().define(&name, LoxValue::Nil);
+                        (None, Rc::clone(&environment))
+                    };
 
                 let mut method_map = HashMap::new();
                 for method in methods {
@@ -136,7 +165,7 @@ impl Interpreter {
                                 method_name.clone(),
                                 parameters,
                                 body,
-                                Rc::clone(&environment),
+                                Rc::clone(&class_environment),
                                 method_name.lexeme == "init",
                             ));
                             method_map.insert(method_name.lexeme.to_string(), function);
@@ -150,7 +179,12 @@ impl Interpreter {
                     }
                 }
 
-                let class = LoxValue::Class(Class::new(name.clone(), method_map));
+                let class = LoxValue::Class(Rc::new(RefCell::new(Class::new(
+                    name.clone(),
+                    super_class_class,
+                    method_map,
+                ))));
+
                 environment.borrow_mut().assign(&name, class);
             }
             Stmt::Expression { expression } => {
@@ -415,6 +449,33 @@ impl Interpreter {
                     "only instances have fields",
                 )),
             },
+            Expr::Super { keyword, method } => {
+                let super_class =
+                    self.lookup_variable(&keyword, Rc::clone(&environment), locals)?;
+                let distance = locals
+                    .get(&keyword)
+                    .expect("super always in a nested scope");
+                let instance = match environment
+                    .borrow()
+                    .get_at(distance - 1, "this")
+                    .expect("this always one off from super")
+                {
+                    LoxValue::Instance(i) => i,
+                    _ => panic!("this doesn't refer to an instance"),
+                };
+                let super_class_class = match super_class {
+                    LoxValue::Class(c) => c,
+                    _ => panic!("super referred to non-class"),
+                };
+                let res = match super_class_class.borrow().find_method(&method) {
+                    Some(m) => m.bind(instance),
+                    None => Err(InterpreterError::from_token(
+                        &method,
+                        "method not found in super class",
+                    )),
+                };
+                res
+            }
             Expr::This { keyword } => {
                 self.lookup_variable(&keyword, Rc::clone(&environment), locals)
             }

@@ -30,17 +30,18 @@ impl Reportable for ResolveError {
 }
 
 #[derive(Clone, Copy)]
-pub enum FunctionType {
+enum FunctionType {
     None,
     Function,
     Initializer,
     Method,
 }
 
-#[derive(Clone, Copy)]
-pub enum ClassType {
+#[derive(Clone, Copy, PartialEq)]
+enum ClassType {
     None,
     Class,
+    SubClass,
 }
 
 pub struct Resolver {
@@ -83,12 +84,30 @@ impl Resolver {
                 }
                 self.end_scope();
             }
-            Stmt::Class { name, methods } => {
+            Stmt::Class {
+                name,
+                super_class,
+                methods,
+            } => {
                 let enclosing_class = self.current_class;
                 self.current_class = ClassType::Class;
 
                 self.declare(name)?;
                 self.define(name);
+
+                if let Some(Expr::Variable { name: token }) = super_class {
+                    if token.lexeme != name.lexeme {
+                        self.current_class = ClassType::SubClass;
+                        self.resolve_local(token);
+                        self.begin_scope();
+                        self.define("super");
+                    } else {
+                        return Err(ResolveError::from_token(
+                            token,
+                            "a class can't inherit from itself",
+                        ));
+                    }
+                }
 
                 self.begin_scope();
                 if let Some(scope) = self.stack.last_mut() {
@@ -119,6 +138,11 @@ impl Resolver {
                 }
 
                 self.end_scope();
+
+                if super_class.is_some() {
+                    self.end_scope();
+                }
+
                 self.current_class = enclosing_class;
             }
             Stmt::Expression { expression } => {
@@ -214,6 +238,20 @@ impl Resolver {
             Expr::Set { object, value, .. } => {
                 self.resolve_expression(&**object)?;
                 self.resolve_expression(&**value)?;
+            }
+            Expr::Super { keyword, .. } => {
+                if self.current_class == ClassType::None {
+                    return Err(ResolveError::from_token(
+                        keyword,
+                        "can't use 'super' outside of a class",
+                    ));
+                } else if self.current_class == ClassType::Class {
+                    return Err(ResolveError::from_token(
+                        keyword,
+                        "can't use 'super' in a class without a super class",
+                    ));
+                }
+                self.resolve_local(keyword);
             }
             Expr::This { keyword } => {
                 if let ClassType::None = self.current_class {

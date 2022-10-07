@@ -302,6 +302,12 @@ impl<'code> Parser<'code> {
             return Ok(Expr::This { keyword });
         }
 
+        if let Some(keyword) = self.match_next(&[TokenType::Super]) {
+            self.consume(TokenType::Dot, "expect '.' after 'super'")?;
+            let method = self.consume(TokenType::Identifier, "expect super class method name")?;
+            return Ok(Expr::Super { keyword, method });
+        }
+
         Err(ParseError::from_token(
             self.peek(),
             "Unterminated expression",
@@ -312,6 +318,13 @@ impl<'code> Parser<'code> {
     fn class_declaration(&mut self) -> Result<Stmt, ParseError> {
         let name = self.consume(TokenType::Identifier, "expect class name")?;
 
+        let mut super_class = None;
+        if self.match_next(&[TokenType::Less]).is_some() {
+            super_class = Some(Expr::Variable {
+                name: self.consume(TokenType::Identifier, "expect super class name")?,
+            });
+        }
+
         self.consume(TokenType::LeftBrace, "expect '{{' before class body")?;
         let mut methods = Vec::new();
         while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
@@ -320,7 +333,11 @@ impl<'code> Parser<'code> {
 
         self.consume(TokenType::RightBrace, "expect '}}' after class body")?;
 
-        Ok(Stmt::Class { name, methods })
+        Ok(Stmt::Class {
+            name,
+            super_class,
+            methods,
+        })
     }
 
     fn function_declaration(

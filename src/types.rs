@@ -42,7 +42,7 @@ pub enum LoxValue {
     String(String),
     Function(UserFunction),
     Builtin(NativeFunction),
-    Class(Class),
+    Class(Rc<RefCell<Class>>),
     Instance(Instance),
 }
 
@@ -62,7 +62,7 @@ impl LoxValue {
 impl Callable for LoxValue {
     fn arity(&self) -> usize {
         match self {
-            LoxValue::Class(c) => c.arity(),
+            LoxValue::Class(c) => c.borrow().arity(),
             LoxValue::Function(f) => f.arity(),
             LoxValue::Builtin(f) => f.arity(),
             _ => 0,
@@ -71,7 +71,7 @@ impl Callable for LoxValue {
 
     fn location(&self) -> String {
         match self {
-            LoxValue::Class(c) => c.location(),
+            LoxValue::Class(c) => c.borrow().location(),
             LoxValue::Function(f) => f.location(),
             LoxValue::Builtin(f) => f.location(),
             _ => "".to_string(),
@@ -86,7 +86,9 @@ impl Callable for LoxValue {
         locals: &HashMap<Token, usize>,
     ) -> Result<LoxValue, InterpreterError> {
         match self {
-            LoxValue::Class(callable) => callable.call(interpreter, arguments, line, locals),
+            LoxValue::Class(callable) => {
+                callable.borrow().call(interpreter, arguments, line, locals)
+            }
             LoxValue::Function(callable) => callable.call(interpreter, arguments, line, locals),
             LoxValue::Builtin(callable) => callable.call(interpreter, arguments, line, locals),
             _ => Err(InterpreterError::new(
@@ -138,7 +140,7 @@ impl fmt::Display for LoxValue {
             LoxValue::Nil => write!(f, "nil"),
             LoxValue::Function(fun) => write!(f, "<fun {}>", fun.location()),
             LoxValue::Builtin(fun) => write!(f, "{}", fun.location()),
-            LoxValue::Class(c) => write!(f, "<class {}>", c.location()),
+            LoxValue::Class(c) => write!(f, "<class {}>", c.borrow().location()),
             LoxValue::Instance(i) => write!(f, "<instance of {}>", i.name),
         }
     }
@@ -293,24 +295,51 @@ impl Callable for UserFunction {
     }
 }
 
+// ========== FIND METHOD ==========
+
+pub trait FindMethod {
+    fn methods(&self) -> Rc<RefCell<HashMap<String, LoxValue>>>;
+    fn super_class(&self) -> Option<Rc<RefCell<Class>>>;
+    fn find_method(&self, name: impl AsRef<str>) -> Option<LoxValue> {
+        match self.methods().borrow().get(name.as_ref()) {
+            Some(v) => Some(v.clone()),
+            None => match self.super_class() {
+                Some(c) => c.borrow().find_method(name),
+                None => None,
+            },
+        }
+    }
+}
+
 // ========== CLASS ===========
 
 #[derive(Clone, Debug)]
 pub struct Class {
     name: Token,
+    super_class: Option<Rc<RefCell<Class>>>,
     methods: Rc<RefCell<HashMap<String, LoxValue>>>,
 }
 
 impl Class {
-    pub fn new(name: Token, methods: HashMap<String, LoxValue>) -> Self {
+    pub fn new(
+        name: Token,
+        super_class: Option<Rc<RefCell<Class>>>,
+        methods: HashMap<String, LoxValue>,
+    ) -> Self {
         Self {
             name,
+            super_class,
             methods: Rc::new(RefCell::new(methods)),
         }
     }
+}
 
-    pub fn find_method(&self, name: impl AsRef<str>) -> Option<LoxValue> {
-        self.methods.borrow().get(name.as_ref()).cloned()
+impl FindMethod for Class {
+    fn methods(&self) -> Rc<RefCell<HashMap<String, LoxValue>>> {
+        Rc::clone(&self.methods)
+    }
+    fn super_class(&self) -> Option<Rc<RefCell<Class>>> {
+        self.super_class.as_ref().map(Rc::clone)
     }
 }
 
@@ -335,7 +364,11 @@ impl Callable for Class {
     ) -> Result<LoxValue, InterpreterError> {
         self.check_arity(arguments, line)?;
 
-        let instance = Instance::new(&self.name, Rc::clone(&self.methods));
+        let instance = Instance::new(
+            &self.name,
+            self.super_class.as_ref().map(Rc::clone),
+            Rc::clone(&self.methods),
+        );
 
         if let Some(initializer) = self.find_method("init") {
             initializer
@@ -351,14 +384,20 @@ impl Callable for Class {
 #[derive(Clone, Debug)]
 pub struct Instance {
     name: String,
+    super_class: Option<Rc<RefCell<Class>>>,
     fields: Rc<RefCell<HashMap<String, LoxValue>>>,
     methods: Rc<RefCell<HashMap<String, LoxValue>>>,
 }
 
 impl Instance {
-    pub fn new(name: impl AsRef<str>, methods: Rc<RefCell<HashMap<String, LoxValue>>>) -> Self {
+    pub fn new(
+        name: impl AsRef<str>,
+        super_class: Option<Rc<RefCell<Class>>>,
+        methods: Rc<RefCell<HashMap<String, LoxValue>>>,
+    ) -> Self {
         Self {
             name: name.as_ref().to_string(),
+            super_class,
             fields: Rc::new(RefCell::new(HashMap::new())),
             methods,
         }
@@ -381,8 +420,13 @@ impl Instance {
             .borrow_mut()
             .insert(name.as_ref().to_string(), value);
     }
+}
 
-    pub fn find_method(&self, name: impl AsRef<str>) -> Option<LoxValue> {
-        self.methods.borrow().get(name.as_ref()).cloned()
+impl FindMethod for Instance {
+    fn methods(&self) -> Rc<RefCell<HashMap<String, LoxValue>>> {
+        Rc::clone(&self.methods)
+    }
+    fn super_class(&self) -> Option<Rc<RefCell<Class>>> {
+        self.super_class.as_ref().map(Rc::clone)
     }
 }

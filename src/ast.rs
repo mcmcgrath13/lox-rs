@@ -37,6 +37,10 @@ pub enum Expr {
         name: Token,
         value: Box<Expr>,
     },
+    Super {
+        keyword: Token,
+        method: Token,
+    },
     This {
         keyword: Token,
     },
@@ -77,6 +81,7 @@ impl PrettyPrinting for Expr {
                 object.print(),
                 value.print()
             ),
+            Expr::Super { keyword, method } => format!("({} {})", keyword.print(), method.print()),
             Expr::This { keyword } => keyword.print(),
             Expr::Unary { right, op } => format!("({} {})", op.print(), right.print()),
             Expr::Variable { name } => name.print(),
@@ -91,7 +96,8 @@ pub enum Stmt {
     },
     Class {
         name: Token,
-        methods: Vec<Stmt>, // specifically Stmt::Function
+        super_class: Option<Expr>, // specifically Expr::Variable
+        methods: Vec<Stmt>,        // specifically Stmt::Function
     },
     Expression {
         expression: Expr,
@@ -127,7 +133,14 @@ impl PrettyPrinting for Stmt {
     fn print(&self) -> String {
         match self {
             Stmt::Block { statements } => format!("(block {})", statements.print()),
-            Stmt::Class { name, methods } => format!("({} {})", name.print(), methods.print()),
+            Stmt::Class {
+                name,
+                super_class,
+                methods,
+            } => match super_class {
+                Some(c) => format!("({} < {} {})", name.print(), c.print(), methods.print()),
+                None => format!("({} {})", name.print(), methods.print()),
+            },
             Stmt::Expression { expression } => format!("(; {})", expression.print()),
             Stmt::Function {
                 name,

@@ -21,11 +21,11 @@ impl ResolveError {
 }
 
 impl Reportable for ResolveError {
-    fn report(&self) {
-        eprintln!(
+    fn report(&self) -> String {
+        format!(
             "[line {} at {}] Error (Parser): {}",
             self.line, self.location, self.message
-        );
+        )
     }
 }
 

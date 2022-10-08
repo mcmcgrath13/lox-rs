@@ -25,7 +25,7 @@ pub trait Callable: fmt::Debug {
     }
     fn call(
         &self,
-        interpreter: &Interpreter,
+        interpreter: &mut Interpreter,
         arguments: &[LoxValue],
         line: usize,
         locals: &HashMap<Token, usize>,
@@ -80,7 +80,7 @@ impl Callable for LoxValue {
 
     fn call(
         &self,
-        interpreter: &Interpreter,
+        interpreter: &mut Interpreter,
         arguments: &[LoxValue],
         line: usize,
         locals: &HashMap<Token, usize>,
@@ -179,7 +179,7 @@ impl Callable for NativeFunction {
 
     fn call(
         &self,
-        _interpreter: &Interpreter,
+        _interpreter: &mut Interpreter,
         arguments: &[LoxValue],
         line: usize,
         _locals: &HashMap<Token, usize>,
@@ -248,7 +248,7 @@ impl Callable for UserFunction {
 
     fn call(
         &self,
-        interpreter: &Interpreter,
+        interpreter: &mut Interpreter,
         arguments: &[LoxValue],
         line: usize,
         locals: &HashMap<Token, usize>,
@@ -357,7 +357,7 @@ impl Callable for Class {
 
     fn call(
         &self,
-        interpreter: &Interpreter,
+        interpreter: &mut Interpreter,
         arguments: &[LoxValue],
         line: usize,
         locals: &HashMap<Token, usize>,

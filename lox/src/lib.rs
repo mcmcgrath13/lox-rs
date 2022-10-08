@@ -1,4 +1,3 @@
-use std::env;
 use std::fs;
 use std::io::{self, Write};
 
@@ -35,18 +34,18 @@ where
 }
 
 pub trait Reportable {
-    fn report(&self);
+    fn report(&self) -> String;
 }
 
 #[derive(Debug)]
-struct RunTime {
+pub struct RunTime {
     had_error: bool,
     had_runtime_error: bool,
     interpreter: Interpreter,
 }
 
 impl RunTime {
-    fn new() -> RunTime {
+    pub fn new() -> RunTime {
         RunTime {
             had_error: false,
             had_runtime_error: false,
@@ -54,7 +53,7 @@ impl RunTime {
         }
     }
 
-    fn run(&mut self, code: &String) {
+    fn run_debug(&mut self, code: &String) {
         // scanning phase
         let mut scanner = Scanner::new(code);
         let (tokens, scan_errs) = scanner.scan_tokens();
@@ -64,14 +63,14 @@ impl RunTime {
             println!("{}", token)
         }
         for err in scan_errs {
-            self.error(err)
+            eprintln!("{}", self.error(&err))
         }
 
         // parsing phase
         let mut parser = Parser::new(tokens);
         let (ast, parse_errs) = parser.parse();
         for err in parse_errs {
-            self.error(err)
+            eprintln!("{}", self.error(&err))
         }
 
         // short circuit at this point if we've had errors
@@ -88,7 +87,7 @@ impl RunTime {
         let mut resolver = Resolver::new();
         let (locals, resolve_errs) = resolver.resolve(&ast);
         for err in resolve_errs {
-            self.error(err)
+            eprintln!("{}", self.error(&err))
         }
 
         // short circuit at this point if we've had errors
@@ -98,25 +97,58 @@ impl RunTime {
         }
 
         println!("{}", "\nResult:".bold().green());
-        if let Err(err) = self.interpreter.interpret(ast, locals) {
-            self.runtime_error(err);
+        match self.interpreter.interpret(ast, locals) {
+            Ok(v) => println!("{}", v),
+            Err(err) => eprintln!("{}", self.runtime_error(err)),
+        };
+    }
+
+    pub fn run(&mut self, code: &String) -> Result<String, String> {
+        // scanning phase
+        let mut scanner = Scanner::new(code);
+        let (tokens, scan_errs) = scanner.scan_tokens();
+
+        // parsing phase
+        let mut parser = Parser::new(tokens);
+        let (ast, parse_errs) = parser.parse();
+        if !scan_errs.is_empty() || !parse_errs.is_empty() {
+            let errs = self.error_all(scan_errs) + "\n" + &self.error_all(parse_errs);
+            return Err(errs.trim().to_string());
+        }
+
+        let mut resolver = Resolver::new();
+        let (locals, resolve_errs) = resolver.resolve(&ast);
+        if !resolve_errs.is_empty() {
+            return Err(self.error_all(resolve_errs));
+        }
+
+        match self.interpreter.interpret(ast, locals) {
+            Ok(s) => Ok(s),
+            Err(err) => Err(self.runtime_error(err)),
         }
     }
 
-    fn error(&mut self, err: impl Reportable) {
-        err.report();
-        self.had_error = true;
+    fn error_all(&mut self, errs: Vec<impl Reportable>) -> String {
+        errs.iter()
+            .map(|e| self.error(e))
+            .collect::<Vec<String>>()
+            .join("\n")
     }
 
-    fn runtime_error(&mut self, err: impl Reportable) {
-        err.report();
+    fn error(&mut self, err: &impl Reportable) -> String {
+        self.had_error = true;
+        err.report()
+    }
+
+    fn runtime_error(&mut self, err: impl Reportable) -> String {
         self.had_runtime_error = true;
+        err.report()
     }
 
     pub fn run_file(&mut self, file_path: &String) {
         let code: String =
             fs::read_to_string(file_path).expect("Should have been able to read the file");
-        self.run(&code);
+        self.run_debug(&code);
     }
 
     pub fn run_prompt(&mut self) {
@@ -130,27 +162,29 @@ impl RunTime {
             if code.is_empty() {
                 break;
             };
-            self.run(&code);
+            match self.run(&code) {
+                Ok(s) => println!("{}", s),
+                Err(s) => eprintln!("{}", s),
+            };
             code.clear();
             self.had_error = false;
             self.had_runtime_error = false;
         }
     }
+
+    pub fn exit_code(&mut self) -> i32 {
+        if self.had_runtime_error {
+            70
+        } else if self.had_error {
+            65
+        } else {
+            0
+        }
+    }
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    let mut rt = RunTime::new();
-    match args.len() {
-        3.. => println!("Usage: lox-rs [script]"),
-        2 => rt.run_file(&args[1]),
-        _ => rt.run_prompt(),
-    }
-
-    if rt.had_runtime_error {
-        std::process::exit(70)
-    }
-    if rt.had_error {
-        std::process::exit(65)
+impl Default for RunTime {
+    fn default() -> Self {
+        Self::new()
     }
 }

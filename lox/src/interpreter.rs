@@ -51,17 +51,17 @@ impl InterpreterError {
 }
 
 impl Reportable for InterpreterError {
-    fn report(&self) {
+    fn report(&self) -> String {
         match self {
             InterpreterError::Exception {
                 line,
                 location,
                 message,
             } => {
-                eprintln!(
+                format!(
                     "[line {} at {}] Error (Interpreter): {}",
                     line, location, message
-                );
+                )
             }
             _ => unreachable!(),
         }
@@ -72,6 +72,7 @@ impl Reportable for InterpreterError {
 pub struct Interpreter {
     environment: Rc<RefCell<Environment>>,
     globals: Rc<RefCell<Environment>>,
+    outputs: Vec<String>,
 }
 
 impl Interpreter {
@@ -96,23 +97,25 @@ impl Interpreter {
         Self {
             globals: Rc::clone(&globals),
             environment: Rc::clone(&globals),
+            outputs: Vec::new(),
         }
     }
 
     pub fn interpret(
-        &self,
+        &mut self,
         stmts: Vec<Stmt>,
         locals: &HashMap<Token, usize>,
-    ) -> Result<(), InterpreterError> {
+    ) -> Result<String, InterpreterError> {
+        self.outputs.clear();
         for stmt in stmts {
             self.execute(stmt, Rc::clone(&self.environment), locals)?;
         }
 
-        Ok(())
+        Ok(self.outputs.join("\n"))
     }
 
     fn execute(
-        &self,
+        &mut self,
         stmt: Stmt,
         environment: Rc<RefCell<Environment>>,
         locals: &HashMap<Token, usize>,
@@ -217,7 +220,7 @@ impl Interpreter {
             }
             Stmt::Print { expression } => {
                 let value = self.evaluate(expression, Rc::clone(&environment), locals)?;
-                println!("{}", value);
+                self.outputs.push(format!("{}", value));
             }
             Stmt::Return { value, .. } => {
                 let result = match value {
@@ -251,7 +254,7 @@ impl Interpreter {
     }
 
     pub fn execute_block(
-        &self,
+        &mut self,
         statements: &Vec<Stmt>,
         environment: Rc<RefCell<Environment>>,
         locals: &HashMap<Token, usize>,
@@ -266,7 +269,7 @@ impl Interpreter {
     }
 
     fn evaluate(
-        &self,
+        &mut self,
         expr: Expr,
         environment: Rc<RefCell<Environment>>,
         locals: &HashMap<Token, usize>,

@@ -24,11 +24,11 @@ impl ParseError {
 }
 
 impl Reportable for ParseError {
-    fn report(&self) {
-        eprintln!(
+    fn report(&self) -> String {
+        format!(
             "[line {} at {}] Error (Parser): {}",
             self.line, self.lexeme, self.message
-        );
+        )
     }
 }
 

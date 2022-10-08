@@ -26,8 +26,8 @@ impl ScanError {
 }
 
 impl Reportable for ScanError {
-    fn report(&self) {
-        eprintln!("[line {}] Error (Scanner): {}", self.line, self.message);
+    fn report(&self) -> String {
+        format!("[line {}] Error (Scanner): {}", self.line, self.message)
     }
 }
 

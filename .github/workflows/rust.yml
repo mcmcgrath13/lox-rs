@@ -15,9 +15,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Build
-        run: cargo build lox --verbose
+        run: cargo build -p lox --verbose
       - name: Run tests
-        run: cargo test lox --verbose
+        run: cargo test -p lox --verbose
 
   linting:
     runs-on: ubuntu-latest

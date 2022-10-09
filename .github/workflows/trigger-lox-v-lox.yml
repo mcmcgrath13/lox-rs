@@ -1,4 +1,4 @@
-name: CI
+name: trigger lox-v-lox rebuild
 
 on:
   push:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Trigger Param App re-build
+    - name: rebuild
       run: |
         curl \
           -XPOST \

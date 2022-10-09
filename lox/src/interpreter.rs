@@ -369,7 +369,7 @@ impl Interpreter {
 
                     // less than or equal
                     (TokenType::LessEqual, LoxValue::Number(a), LoxValue::Number(b)) => {
-                        Ok(LoxValue::Boolean(a < b))
+                        Ok(LoxValue::Boolean(a <= b))
                     }
                     (TokenType::LessEqual, _, _) => Err(InterpreterError::from_token(
                         &op,

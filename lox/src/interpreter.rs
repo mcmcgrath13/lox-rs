@@ -449,12 +449,7 @@ impl Interpreter {
                             return Ok(left_val);
                         }
                     }
-                    _ => {
-                        return Err(InterpreterError::from_token(
-                            op,
-                            "Unknown logical operator",
-                        ))
-                    }
+                    _ => return Err(InterpreterError::from_token(op, "Unknown logical operator")),
                 }
 
                 Ok(self.evaluate(right, Rc::clone(&environment), locals)?)
@@ -479,11 +474,8 @@ impl Interpreter {
                 )),
             },
             Expr::Super { keyword, method } => {
-                let super_class =
-                    self.lookup_variable(keyword, Rc::clone(&environment), locals)?;
-                let distance = locals
-                    .get(keyword)
-                    .expect("super always in a nested scope");
+                let super_class = self.lookup_variable(keyword, Rc::clone(&environment), locals)?;
+                let distance = locals.get(keyword).expect("super always in a nested scope");
                 let blah = environment
                     .borrow()
                     .get_at(distance - 1, "this")

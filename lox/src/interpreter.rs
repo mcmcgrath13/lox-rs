@@ -83,7 +83,7 @@ impl Interpreter {
         globals.borrow_mut().define(
             "clock",
             LoxValue::Builtin(NativeFunction::new(
-                |_arguments: &[LoxValue]| -> Result<LoxValue, String> {
+                |_arguments: &[Rc<LoxValue>]| -> Result<LoxValue, String> {
                     let start = SystemTime::now();
                     let since_the_epoch = start
                         .duration_since(UNIX_EPOCH)
@@ -107,7 +107,7 @@ impl Interpreter {
         locals: &HashMap<Token, usize>,
     ) -> Result<String, InterpreterError> {
         self.outputs.clear();
-        for stmt in stmts {
+        for stmt in &stmts {
             self.execute(stmt, Rc::clone(&self.environment), locals)?;
         }
 
@@ -116,13 +116,13 @@ impl Interpreter {
 
     fn execute(
         &mut self,
-        stmt: Stmt,
+        stmt: &Stmt,
         environment: Rc<RefCell<Environment>>,
         locals: &HashMap<Token, usize>,
     ) -> Result<(), InterpreterError> {
         match stmt {
             Stmt::Block { statements } => {
-                self.execute_block(&statements, Rc::clone(&environment), locals)?;
+                self.execute_block(statements, Rc::clone(&environment), locals)?;
             }
             Stmt::Class {
                 name,
@@ -133,11 +133,11 @@ impl Interpreter {
                     if let Some(super_class_expr) = super_class {
                         let super_class_value =
                             self.evaluate(super_class_expr, Rc::clone(&environment), locals)?;
-                        let super_class_class = match &super_class_value {
+                        let super_class_class = match &super_class_value.as_ref() {
                             LoxValue::Class(c) => Some(Rc::clone(c)),
                             _ => {
                                 return Err(InterpreterError::from_token(
-                                    &name,
+                                    name,
                                     "super class must be a class",
                                 ))
                             }
@@ -148,7 +148,9 @@ impl Interpreter {
                         let env = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(
                             &environment,
                         )))));
-                        env.borrow_mut().define("super", super_class_value);
+                        env.borrow_mut()
+                            .define("super", super_class_value.as_ref().clone()); // TODO: pass
+                                                                                  // down RC
 
                         (super_class_class, env)
                     } else {
@@ -166,8 +168,8 @@ impl Interpreter {
                         } => {
                             let function = LoxValue::Function(UserFunction::new(
                                 method_name.clone(),
-                                parameters,
-                                body,
+                                parameters.clone(),
+                                body.clone(),
                                 Rc::clone(&class_environment),
                                 method_name.lexeme == "init",
                             ));
@@ -175,7 +177,7 @@ impl Interpreter {
                         }
                         _ => {
                             return Err(InterpreterError::from_token(
-                                &name,
+                                name,
                                 "only methods allowed in classes",
                             ));
                         }
@@ -200,8 +202,8 @@ impl Interpreter {
             } => {
                 let function = LoxValue::Function(UserFunction::new(
                     name.clone(),
-                    parameters,
-                    body,
+                    parameters.clone(),
+                    body.clone(),
                     Rc::clone(&environment),
                     false,
                 ));
@@ -212,10 +214,15 @@ impl Interpreter {
                 then_branch,
                 else_branch,
             } => {
-                if is_truthy(&self.evaluate(condition, Rc::clone(&environment), locals)?) {
-                    self.execute(*then_branch, Rc::clone(&environment), locals)?;
+                if is_truthy(
+                    &self
+                        .evaluate(condition, Rc::clone(&environment), locals)?
+                        .as_ref()
+                        .clone(),
+                ) {
+                    self.execute(then_branch, Rc::clone(&environment), locals)?;
                 } else if let Some(e) = else_branch {
-                    self.execute(*e, Rc::clone(&environment), locals)?;
+                    self.execute(e, Rc::clone(&environment), locals)?;
                 }
             }
             Stmt::Print { expression } => {
@@ -225,7 +232,10 @@ impl Interpreter {
             Stmt::Return { value, .. } => {
                 let result = match value {
                     None => LoxValue::Nil,
-                    Some(expr) => self.evaluate(expr, Rc::clone(&environment), locals)?,
+                    Some(expr) => self
+                        .evaluate(expr, Rc::clone(&environment), locals)?
+                        .as_ref()
+                        .clone(),
                 };
                 // this is hacking into error bubbling up for the return code path
                 // not a true exception
@@ -234,18 +244,22 @@ impl Interpreter {
             Stmt::Var { name, initializer } => {
                 let mut value = LoxValue::Nil;
                 if let Some(expr) = initializer {
-                    value = self.evaluate(expr, Rc::clone(&environment), locals)?;
+                    value = self
+                        .evaluate(expr, Rc::clone(&environment), locals)?
+                        .as_ref()
+                        .clone();
                 }
 
                 environment.borrow_mut().define(&name, value);
             }
             Stmt::While { condition, body } => {
-                while is_truthy(&self.evaluate(
-                    condition.clone(),
-                    Rc::clone(&environment),
-                    locals,
-                )?) {
-                    self.execute(*body.clone(), Rc::clone(&environment), locals)?;
+                while is_truthy(
+                    &self
+                        .evaluate(condition, Rc::clone(&environment), locals)?
+                        .as_ref()
+                        .clone(),
+                ) {
+                    self.execute(body, Rc::clone(&environment), locals)?;
                 }
             }
         };
@@ -263,33 +277,38 @@ impl Interpreter {
             &environment,
         )))));
         for statement in statements {
-            self.execute(statement.clone(), Rc::clone(&block_environment), locals)?;
+            self.execute(statement, Rc::clone(&block_environment), locals)?;
         }
         Ok(())
     }
 
     fn evaluate(
         &mut self,
-        expr: Expr,
+        expr: &Expr,
         environment: Rc<RefCell<Environment>>,
         locals: &HashMap<Token, usize>,
-    ) -> Result<LoxValue, InterpreterError> {
+    ) -> Result<Rc<LoxValue>, InterpreterError> {
         match expr {
             Expr::Assign { name, value } => {
-                let v = self.evaluate(*value, Rc::clone(&environment), locals)?;
-                match locals.get(&name) {
+                let v = self.evaluate(value, Rc::clone(&environment), locals)?;
+                match locals.get(name) {
                     Some(distance) => {
                         if environment
                             .borrow_mut()
-                            .assign_at(*distance, &name, v.clone())
+                            .assign_at(*distance, &name, v.as_ref().clone())
                             .is_none()
                         {
-                            return Err(InterpreterError::from_token(&name, "undefined variable"));
+                            return Err(InterpreterError::from_token(name, "undefined variable"));
                         }
                     }
                     None => {
-                        if self.globals.borrow_mut().assign(&name, v.clone()).is_none() {
-                            return Err(InterpreterError::from_token(&name, "undefined variable"));
+                        if self
+                            .globals
+                            .borrow_mut()
+                            .assign(&name, v.as_ref().clone())
+                            .is_none()
+                        {
+                            return Err(InterpreterError::from_token(name, "undefined variable"));
                         }
                     }
                 }
@@ -297,93 +316,93 @@ impl Interpreter {
                 Ok(v)
             }
             Expr::Binary { left, right, op } => {
-                let left_val = self.evaluate(*left, Rc::clone(&environment), locals)?;
-                let right_val = self.evaluate(*right, Rc::clone(&environment), locals)?;
+                let left_val = self.evaluate(left, Rc::clone(&environment), locals)?;
+                let right_val = self.evaluate(right, Rc::clone(&environment), locals)?;
 
-                match (&op.t, left_val, right_val) {
+                match (&op.t, left_val.as_ref(), right_val.as_ref()) {
                     // subtraction
                     (TokenType::Minus, LoxValue::Number(a), LoxValue::Number(b)) => {
-                        Ok(LoxValue::Number(a - b))
+                        Ok(Rc::new(LoxValue::Number(a - b)))
                     }
                     (TokenType::Minus, _, _) => Err(InterpreterError::from_token(
-                        &op,
+                        op,
                         "Subraction can only be done on numbers",
                     )),
 
                     // division
                     (TokenType::Slash, LoxValue::Number(a), LoxValue::Number(b)) => {
-                        Ok(LoxValue::Number(a / b))
+                        Ok(Rc::new(LoxValue::Number(a / b)))
                     }
                     (TokenType::Slash, _, _) => Err(InterpreterError::from_token(
-                        &op,
+                        op,
                         "Division can only be done on numbers",
                     )),
 
                     // multiplication
                     (TokenType::Star, LoxValue::Number(a), LoxValue::Number(b)) => {
-                        Ok(LoxValue::Number(a * b))
+                        Ok(Rc::new(LoxValue::Number(a * b)))
                     }
                     (TokenType::Star, _, _) => Err(InterpreterError::from_token(
-                        &op,
+                        op,
                         "Multiplication can only be done on numbers",
                     )),
 
                     // addition
                     (TokenType::Plus, LoxValue::Number(a), LoxValue::Number(b)) => {
-                        Ok(LoxValue::Number(a + b))
+                        Ok(Rc::new(LoxValue::Number(a + b)))
                     }
                     (TokenType::Plus, LoxValue::String(a), LoxValue::String(b)) => {
-                        Ok(LoxValue::String(format!("{}{}", a, b)))
+                        Ok(Rc::new(LoxValue::String(format!("{}{}", a, b))))
                     }
                     (TokenType::Plus, _, _) => Err(InterpreterError::from_token(
-                        &op,
+                        op,
                         "The + operator can be used to add two numbers or two strings only",
                     )),
 
                     // greater than
                     (TokenType::Greater, LoxValue::Number(a), LoxValue::Number(b)) => {
-                        Ok(LoxValue::Boolean(a > b))
+                        Ok(Rc::new(LoxValue::Boolean(a > b)))
                     }
                     (TokenType::Greater, _, _) => Err(InterpreterError::from_token(
-                        &op,
+                        op,
                         "Greater than comparison can only be done on numbers",
                     )),
 
                     // greater than or equal
                     (TokenType::GreaterEqual, LoxValue::Number(a), LoxValue::Number(b)) => {
-                        Ok(LoxValue::Boolean(a >= b))
+                        Ok(Rc::new(LoxValue::Boolean(a >= b)))
                     }
                     (TokenType::GreaterEqual, _, _) => Err(InterpreterError::from_token(
-                        &op,
+                        op,
                         "Greater than or equal comparison can only be done on numbers",
                     )),
 
                     // less than
                     (TokenType::Less, LoxValue::Number(a), LoxValue::Number(b)) => {
-                        Ok(LoxValue::Boolean(a < b))
+                        Ok(Rc::new(LoxValue::Boolean(a < b)))
                     }
                     (TokenType::Less, _, _) => Err(InterpreterError::from_token(
-                        &op,
+                        op,
                         "Less than comparison can only be done on numbers",
                     )),
 
                     // less than or equal
                     (TokenType::LessEqual, LoxValue::Number(a), LoxValue::Number(b)) => {
-                        Ok(LoxValue::Boolean(a <= b))
+                        Ok(Rc::new(LoxValue::Boolean(a <= b)))
                     }
                     (TokenType::LessEqual, _, _) => Err(InterpreterError::from_token(
-                        &op,
+                        op,
                         "Less than or equal comparison can only be done on numbers",
                     )),
 
                     // not equal
-                    (TokenType::BangEqual, a, b) => Ok(LoxValue::Boolean(a != b)),
+                    (TokenType::BangEqual, a, b) => Ok(Rc::new(LoxValue::Boolean(a != b))),
 
                     // equal
-                    (TokenType::EqualEqual, a, b) => Ok(LoxValue::Boolean(a == b)),
+                    (TokenType::EqualEqual, a, b) => Ok(Rc::new(LoxValue::Boolean(a == b))),
 
                     // fall through
-                    _ => Err(InterpreterError::from_token(&op, "Unknown binary operator")),
+                    _ => Err(InterpreterError::from_token(op, "Unknown binary operator")),
                 }
             }
             Expr::Call {
@@ -391,7 +410,7 @@ impl Interpreter {
                 paren,
                 arguments,
             } => {
-                let callable = self.evaluate(*callee, Rc::clone(&environment), locals)?;
+                let callable = self.evaluate(callee, Rc::clone(&environment), locals)?;
 
                 let mut argument_vals = Vec::new();
                 for argument in arguments {
@@ -401,21 +420,24 @@ impl Interpreter {
                 callable.call(self, &argument_vals, paren.line, locals)
             }
             Expr::Get { object, name } => {
-                let object_val = self.evaluate(*object, Rc::clone(&environment), locals)?;
-                match object_val {
-                    LoxValue::Instance(i) => Ok(i.get(&name)?),
+                let object_val = self.evaluate(object, Rc::clone(&environment), locals)?;
+                match object_val.as_ref() {
+                    LoxValue::Instance(i) => Ok(i.get(name)?),
                     _ => Err(InterpreterError::from_token(
-                        &name,
-                        "only instances have properites",
+                        name,
+                        "only instances have properties",
                     )),
                 }
             }
             Expr::Grouping { expression } => {
-                self.evaluate(*expression, Rc::clone(&environment), locals)
+                self.evaluate(expression, Rc::clone(&environment), locals)
             }
-            Expr::Literal { value } => (&value).try_into(),
+            Expr::Literal { value } => {
+                let val: Result<LoxValue, InterpreterError> = value.try_into();
+                val.map(Rc::new)
+            }
             Expr::Logical { left, op, right } => {
-                let left_val = self.evaluate(*left, Rc::clone(&environment), locals)?;
+                let left_val = self.evaluate(left, Rc::clone(&environment), locals)?;
                 match op.t {
                     TokenType::Or => {
                         if is_truthy(&left_val) {
@@ -429,72 +451,78 @@ impl Interpreter {
                     }
                     _ => {
                         return Err(InterpreterError::from_token(
-                            &op,
+                            op,
                             "Unknown logical operator",
                         ))
                     }
                 }
 
-                Ok(self.evaluate(*right, Rc::clone(&environment), locals)?)
+                Ok(self.evaluate(right, Rc::clone(&environment), locals)?)
             }
             Expr::Set {
                 object,
                 name,
                 value,
-            } => match self.evaluate(*object, Rc::clone(&environment), locals)? {
-                LoxValue::Instance(mut i) => {
-                    let value_val = self.evaluate(*value, Rc::clone(&environment), locals)?;
-                    i.set(&name, value_val.clone());
+            } => match self
+                .evaluate(object, Rc::clone(&environment), locals)?
+                .as_ref()
+            {
+                LoxValue::Instance(i) => {
+                    let value_val = self.evaluate(value, Rc::clone(&environment), locals)?;
+                    let mut i = i.clone();
+                    i.set(&name, value_val.as_ref().clone());
                     Ok(value_val)
                 }
                 _ => Err(InterpreterError::from_token(
-                    &name,
+                    name,
                     "only instances have fields",
                 )),
             },
             Expr::Super { keyword, method } => {
                 let super_class =
-                    self.lookup_variable(&keyword, Rc::clone(&environment), locals)?;
+                    self.lookup_variable(keyword, Rc::clone(&environment), locals)?;
                 let distance = locals
-                    .get(&keyword)
+                    .get(keyword)
                     .expect("super always in a nested scope");
-                let instance = match environment
+                let blah = environment
                     .borrow()
                     .get_at(distance - 1, "this")
-                    .expect("this always one off from super")
-                {
+                    .expect("this always one off from super");
+                let instance = match blah.as_ref() {
                     LoxValue::Instance(i) => i,
                     _ => panic!("this doesn't refer to an instance"),
                 };
-                let super_class_class = match super_class {
+                let super_class_class = match super_class.as_ref() {
                     LoxValue::Class(c) => c,
                     _ => panic!("super referred to non-class"),
                 };
                 let res = match super_class_class.borrow().find_method(&method) {
-                    Some(m) => m.bind(instance),
+                    Some(m) => m.bind(instance.clone()),
                     None => Err(InterpreterError::from_token(
-                        &method,
+                        method,
                         "method not found in super class",
                     )),
                 };
                 res
             }
             Expr::This { keyword } => {
-                self.lookup_variable(&keyword, Rc::clone(&environment), locals)
+                self.lookup_variable(keyword, Rc::clone(&environment), locals)
             }
             Expr::Unary { op, right } => {
-                let right_val = self.evaluate(*right, Rc::clone(&environment), locals)?;
-                match (&op.t, right_val) {
-                    (TokenType::Minus, LoxValue::Number(n)) => Ok(LoxValue::Number(-1.0 * n)),
+                let right_val = self.evaluate(right, Rc::clone(&environment), locals)?;
+                match (&op.t, right_val.as_ref()) {
+                    (TokenType::Minus, LoxValue::Number(n)) => {
+                        Ok(Rc::new(LoxValue::Number(-1.0 * n)))
+                    }
                     (TokenType::Minus, _) => Err(InterpreterError::from_token(
-                        &op,
+                        op,
                         "non-number with unary minus",
                     )),
-                    (TokenType::Bang, v) => Ok(LoxValue::Boolean(is_truthy(&v))),
-                    _ => Err(InterpreterError::from_token(&op, "Unknown unary operator")),
+                    (TokenType::Bang, v) => Ok(Rc::new(LoxValue::Boolean(is_truthy(v)))),
+                    _ => Err(InterpreterError::from_token(op, "Unknown unary operator")),
                 }
             }
-            Expr::Variable { name } => self.lookup_variable(&name, Rc::clone(&environment), locals),
+            Expr::Variable { name } => self.lookup_variable(name, Rc::clone(&environment), locals),
         }
     }
 
@@ -503,11 +531,11 @@ impl Interpreter {
         name: &Token,
         environment: Rc<RefCell<Environment>>,
         locals: &HashMap<Token, usize>,
-    ) -> Result<LoxValue, InterpreterError> {
+    ) -> Result<Rc<LoxValue>, InterpreterError> {
         match locals.get(name) {
             Some(distance) => match environment.borrow().get_at(*distance, name) {
                 Some(v) => Ok(v),
-                None => panic!("resolver doesn't match intepreter!!!"),
+                None => panic!("resolver doesn't match interpreter!!!"),
             },
             None => match self.globals.borrow().get(name) {
                 Some(v) => Ok(v),

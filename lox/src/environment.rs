@@ -6,7 +6,7 @@ use crate::types::LoxValue;
 
 #[derive(Debug)]
 pub struct Environment {
-    values: HashMap<String, LoxValue>,
+    values: HashMap<String, Rc<LoxValue>>,
     enclosing: Option<Rc<RefCell<Environment>>>,
 }
 
@@ -19,14 +19,15 @@ impl Environment {
     }
 
     pub fn define(&mut self, name: impl AsRef<str>, value: LoxValue) {
-        self.values.insert(name.as_ref().to_string(), value);
+        self.values
+            .insert(name.as_ref().to_string(), Rc::new(value));
     }
 
-    pub fn get(&self, name: impl AsRef<str>) -> Option<LoxValue> {
+    pub fn get(&self, name: impl AsRef<str>) -> Option<Rc<LoxValue>> {
         self.get_at(0, name)
     }
 
-    pub fn get_at(&self, distance: usize, name: impl AsRef<str>) -> Option<LoxValue> {
+    pub fn get_at(&self, distance: usize, name: impl AsRef<str>) -> Option<Rc<LoxValue>> {
         if distance == 0 {
             return self.values.get(name.as_ref()).cloned();
         }
@@ -48,7 +49,8 @@ impl Environment {
         value: LoxValue,
     ) -> Option<()> {
         if distance == 0 {
-            self.values.insert(name.as_ref().to_string(), value);
+            self.values
+                .insert(name.as_ref().to_string(), Rc::new(value));
             return Some(());
         }
 

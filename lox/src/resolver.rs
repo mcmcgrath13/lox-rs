@@ -163,9 +163,9 @@ impl Resolver {
                 else_branch,
             } => {
                 self.resolve_expression(condition)?;
-                self.resolve_statement(&**then_branch)?;
+                self.resolve_statement(then_branch)?;
                 if let Some(e) = else_branch {
-                    self.resolve_statement(&**e)?;
+                    self.resolve_statement(e)?;
                 }
             }
             Stmt::Print { expression } => {
@@ -198,7 +198,7 @@ impl Resolver {
             }
             Stmt::While { condition, body } => {
                 self.resolve_expression(condition)?;
-                self.resolve_statement(&**body)?;
+                self.resolve_statement(body)?;
             }
         };
 
@@ -208,36 +208,36 @@ impl Resolver {
     fn resolve_expression(&mut self, expression: &Expr) -> Result<(), ResolveError> {
         match expression {
             Expr::Assign { name, value } => {
-                self.resolve_expression(&**value)?;
+                self.resolve_expression(value)?;
                 self.resolve_local(name);
             }
             Expr::Binary { left, right, .. } => {
-                self.resolve_expression(&**left)?;
-                self.resolve_expression(&**right)?;
+                self.resolve_expression(left)?;
+                self.resolve_expression(right)?;
             }
             Expr::Call {
                 callee, arguments, ..
             } => {
-                self.resolve_expression(&**callee)?;
+                self.resolve_expression(callee)?;
 
                 for argument in arguments {
                     self.resolve_expression(argument)?;
                 }
             }
             Expr::Get { object, .. } => {
-                self.resolve_expression(&**object)?;
+                self.resolve_expression(object)?;
             }
             Expr::Grouping { expression } => {
-                self.resolve_expression(&**expression)?;
+                self.resolve_expression(expression)?;
             }
             Expr::Literal { .. } => {}
             Expr::Logical { left, right, .. } => {
-                self.resolve_expression(&**left)?;
-                self.resolve_expression(&**right)?;
+                self.resolve_expression(left)?;
+                self.resolve_expression(right)?;
             }
             Expr::Set { object, value, .. } => {
-                self.resolve_expression(&**object)?;
-                self.resolve_expression(&**value)?;
+                self.resolve_expression(object)?;
+                self.resolve_expression(value)?;
             }
             Expr::Super { keyword, .. } => {
                 if self.current_class == ClassType::None {
@@ -263,7 +263,7 @@ impl Resolver {
                 self.resolve_local(keyword);
             }
             Expr::Unary { right, .. } => {
-                self.resolve_expression(&**right)?;
+                self.resolve_expression(right)?;
             }
             Expr::Variable { name } => {
                 if let Some(scope) = self.stack.last() {

@@ -143,7 +143,7 @@ impl Interpreter {
                             }
                         };
 
-                        environment.borrow_mut().define(&name, LoxValue::Nil);
+                        environment.borrow_mut().define(name, LoxValue::Nil);
 
                         let env = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(
                             &environment,
@@ -154,7 +154,7 @@ impl Interpreter {
 
                         (super_class_class, env)
                     } else {
-                        environment.borrow_mut().define(&name, LoxValue::Nil);
+                        environment.borrow_mut().define(name, LoxValue::Nil);
                         (None, Rc::clone(&environment))
                     };
 
@@ -190,7 +190,7 @@ impl Interpreter {
                     method_map,
                 ))));
 
-                environment.borrow_mut().assign(&name, class);
+                environment.borrow_mut().assign(name, class);
             }
             Stmt::Expression { expression } => {
                 self.evaluate(expression, Rc::clone(&environment), locals)?;
@@ -207,7 +207,7 @@ impl Interpreter {
                     Rc::clone(&environment),
                     false,
                 ));
-                environment.borrow_mut().define(&name, function);
+                environment.borrow_mut().define(name, function);
             }
             Stmt::If {
                 condition,
@@ -250,7 +250,7 @@ impl Interpreter {
                         .clone();
                 }
 
-                environment.borrow_mut().define(&name, value);
+                environment.borrow_mut().define(name, value);
             }
             Stmt::While { condition, body } => {
                 while is_truthy(
@@ -295,7 +295,7 @@ impl Interpreter {
                     Some(distance) => {
                         if environment
                             .borrow_mut()
-                            .assign_at(*distance, &name, v.as_ref().clone())
+                            .assign_at(*distance, name, v.as_ref().clone())
                             .is_none()
                         {
                             return Err(InterpreterError::from_token(name, "undefined variable"));
@@ -305,7 +305,7 @@ impl Interpreter {
                         if self
                             .globals
                             .borrow_mut()
-                            .assign(&name, v.as_ref().clone())
+                            .assign(name, v.as_ref().clone())
                             .is_none()
                         {
                             return Err(InterpreterError::from_token(name, "undefined variable"));
@@ -465,7 +465,7 @@ impl Interpreter {
                 LoxValue::Instance(i) => {
                     let value_val = self.evaluate(value, Rc::clone(&environment), locals)?;
                     let mut i = i.clone();
-                    i.set(&name, value_val.as_ref().clone());
+                    i.set(name, value_val.as_ref().clone());
                     Ok(value_val)
                 }
                 _ => Err(InterpreterError::from_token(
@@ -488,7 +488,7 @@ impl Interpreter {
                     LoxValue::Class(c) => c,
                     _ => panic!("super referred to non-class"),
                 };
-                let res = match super_class_class.borrow().find_method(&method) {
+                let res = match super_class_class.borrow().find_method(method) {
                     Some(m) => m.bind(instance.clone()),
                     None => Err(InterpreterError::from_token(
                         method,

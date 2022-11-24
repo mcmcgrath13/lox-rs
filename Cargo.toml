@@ -4,3 +4,7 @@ members = [
     "lox",
     "lox-wasm",
 ]
+
+[profile.release]
+debug = true
+opt-level = 3

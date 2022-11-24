@@ -476,11 +476,11 @@ impl Interpreter {
             Expr::Super { keyword, method } => {
                 let super_class = self.lookup_variable(keyword, Rc::clone(&environment), locals)?;
                 let distance = locals.get(keyword).expect("super always in a nested scope");
-                let blah = environment
+                let this = environment
                     .borrow()
                     .get_at(distance - 1, "this")
                     .expect("this always one off from super");
-                let instance = match blah.as_ref() {
+                let instance = match this.as_ref() {
                     LoxValue::Instance(i) => i,
                     _ => panic!("this doesn't refer to an instance"),
                 };

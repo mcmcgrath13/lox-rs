@@ -12,7 +12,7 @@ use crate::PrettyPrinting;
 pub trait Callable: fmt::Debug {
     fn arity(&self) -> usize;
     fn location(&self) -> String;
-    fn check_arity(&self, arguments: &[LoxValue], line: usize) -> Result<(), InterpreterError> {
+    fn check_arity(&self, arguments: &[Rc<LoxValue>], line: usize) -> Result<(), InterpreterError> {
         if self.arity() == arguments.len() {
             Ok(())
         } else {
@@ -26,10 +26,10 @@ pub trait Callable: fmt::Debug {
     fn call(
         &self,
         interpreter: &mut Interpreter,
-        arguments: &[LoxValue],
+        arguments: &[Rc<LoxValue>],
         line: usize,
         locals: &HashMap<Token, usize>,
-    ) -> Result<LoxValue, InterpreterError>;
+    ) -> Result<Rc<LoxValue>, InterpreterError>;
 }
 
 // ========== LOX VALUE ===========
@@ -47,9 +47,9 @@ pub enum LoxValue {
 }
 
 impl LoxValue {
-    pub fn bind(&self, instance: Instance) -> Result<Self, InterpreterError> {
+    pub fn bind(&self, instance: Instance) -> Result<Rc<Self>, InterpreterError> {
         match self {
-            LoxValue::Function(f) => Ok(LoxValue::Function(f.bind(instance))),
+            LoxValue::Function(f) => Ok(Rc::new(LoxValue::Function(f.bind(instance)))),
             _ => Err(InterpreterError::new(
                 0,
                 "somewhere",
@@ -81,10 +81,10 @@ impl Callable for LoxValue {
     fn call(
         &self,
         interpreter: &mut Interpreter,
-        arguments: &[LoxValue],
+        arguments: &[Rc<LoxValue>],
         line: usize,
         locals: &HashMap<Token, usize>,
-    ) -> Result<LoxValue, InterpreterError> {
+    ) -> Result<Rc<LoxValue>, InterpreterError> {
         match self {
             LoxValue::Class(callable) => {
                 callable.borrow().call(interpreter, arguments, line, locals)
@@ -148,7 +148,7 @@ impl fmt::Display for LoxValue {
 
 // ========== NATIVE FUNCTION ===========
 
-type FnPtr = fn(&[LoxValue]) -> Result<LoxValue, String>;
+type FnPtr = fn(&[Rc<LoxValue>]) -> Result<LoxValue, String>;
 
 #[derive(Clone)]
 pub struct NativeFunction {
@@ -180,13 +180,13 @@ impl Callable for NativeFunction {
     fn call(
         &self,
         _interpreter: &mut Interpreter,
-        arguments: &[LoxValue],
+        arguments: &[Rc<LoxValue>],
         line: usize,
         _locals: &HashMap<Token, usize>,
-    ) -> Result<LoxValue, InterpreterError> {
+    ) -> Result<Rc<LoxValue>, InterpreterError> {
         self.check_arity(arguments, line)?;
         match (self.body)(arguments) {
-            Ok(v) => Ok(v),
+            Ok(v) => Ok(v.into()),
             Err(s) => Err(InterpreterError::new(line, self.location(), s)),
         }
     }
@@ -249,10 +249,10 @@ impl Callable for UserFunction {
     fn call(
         &self,
         interpreter: &mut Interpreter,
-        arguments: &[LoxValue],
+        arguments: &[Rc<LoxValue>],
         line: usize,
         locals: &HashMap<Token, usize>,
-    ) -> Result<LoxValue, InterpreterError> {
+    ) -> Result<Rc<LoxValue>, InterpreterError> {
         self.check_arity(arguments, line)?;
 
         let environment = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(
@@ -263,15 +263,15 @@ impl Callable for UserFunction {
         for i in 0..self.arity() {
             environment.borrow_mut().define(
                 self.parameters.get(i).unwrap(),
-                arguments.get(i).unwrap().clone(),
+                arguments.get(i).unwrap().as_ref().clone(),
             );
         }
 
-        let mut return_value = LoxValue::Nil;
+        let mut return_value = Rc::new(LoxValue::Nil);
         if let Err(e) = interpreter.execute_block(&self.body, Rc::clone(&environment), locals) {
             match e {
                 InterpreterError::Return { value } => {
-                    return_value = value;
+                    return_value = Rc::new(value);
                 }
                 _ => return Err(e),
             }
@@ -358,10 +358,10 @@ impl Callable for Class {
     fn call(
         &self,
         interpreter: &mut Interpreter,
-        arguments: &[LoxValue],
+        arguments: &[Rc<LoxValue>],
         line: usize,
         locals: &HashMap<Token, usize>,
-    ) -> Result<LoxValue, InterpreterError> {
+    ) -> Result<Rc<LoxValue>, InterpreterError> {
         self.check_arity(arguments, line)?;
 
         let instance = Instance::new(
@@ -376,7 +376,7 @@ impl Callable for Class {
                 .call(interpreter, arguments, line, locals)?;
         }
 
-        Ok(LoxValue::Instance(instance))
+        Ok(Rc::new(LoxValue::Instance(instance)))
     }
 }
 
@@ -403,9 +403,9 @@ impl Instance {
         }
     }
 
-    pub fn get(&self, name: &Token) -> Result<LoxValue, InterpreterError> {
+    pub fn get(&self, name: &Token) -> Result<Rc<LoxValue>, InterpreterError> {
         if let Some(v) = self.fields.borrow().get(name.as_ref()) {
-            return Ok(v.clone());
+            return Ok(Rc::new(v.clone()));
         }
 
         if let Some(m) = self.find_method(name) {

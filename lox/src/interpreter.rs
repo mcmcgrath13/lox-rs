@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::ast::{Expr, Stmt};
 use crate::environment::Environment;
@@ -68,6 +67,35 @@ impl Reportable for InterpreterError {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::{SystemTime, UNIX_EPOCH};
+
+#[cfg(not(target_arch = "wasm32"))]
+fn now() -> u64 {
+    let start = SystemTime::now();
+    start
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_millis() as u64
+}
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(inline_js = r#"
+export function performance_now() {
+  return Date.now();
+}"#)]
+extern "C" {
+    fn performance_now() -> f64;
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn now() -> u64 {
+    performance_now() as u64
+}
+
 #[derive(Debug)]
 pub struct Interpreter {
     environment: Rc<RefCell<Environment>>,
@@ -84,11 +112,7 @@ impl Interpreter {
             "clock",
             LoxValue::Builtin(NativeFunction::new(
                 |_arguments: &[Rc<LoxValue>]| -> Result<LoxValue, String> {
-                    let start = SystemTime::now();
-                    let since_the_epoch = start
-                        .duration_since(UNIX_EPOCH)
-                        .expect("Time went backwards");
-                    Ok(LoxValue::Number(since_the_epoch.as_secs() as f64))
+                    Ok(LoxValue::Number(now() as f64))
                 },
                 0,
             )),

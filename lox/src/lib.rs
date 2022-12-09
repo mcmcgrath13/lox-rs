@@ -123,7 +123,7 @@ impl RunTime {
 
         self.printer.out(format!("{}", "\nResult:".bold().green()));
         match self.interpreter.interpret(ast, locals) {
-            Ok(v) => self.printer.out(v),
+            Ok(()) => {}
             Err(err) => self.runtime_error(err),
         };
     }
@@ -149,7 +149,7 @@ impl RunTime {
         }
 
         match self.interpreter.interpret(ast, locals) {
-            Ok(s) => self.printer.out(s),
+            Ok(()) => {}
             Err(err) => self.runtime_error(err),
         };
     }

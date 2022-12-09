@@ -1,4 +1,4 @@
-use lox::RunTime;
+use lox::{Printer, RunTime};
 use wasm_bindgen::prelude::*;
 
 mod utils;
@@ -14,20 +14,43 @@ pub struct Lox {
     rt: RunTime,
 }
 
-#[wasm_bindgen]
-impl Lox {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
-        Self { rt: RunTime::new() }
+#[derive(Debug, Clone)]
+struct WasmPrinter {
+    printfn: js_sys::Function,
+}
+
+impl WasmPrinter {
+    pub fn new(f: &js_sys::Function) -> Self {
+        Self { printfn: f.clone() }
     }
 
-    pub fn run(&mut self, code: String) -> Result<String, String> {
-        self.rt.run(&code)
+    pub fn print(&self, val: String) {
+        let this = JsValue::null();
+        let x = JsValue::from(val);
+        self.printfn.call1(&this, &x).expect("couldn't call js");
     }
 }
 
-impl Default for Lox {
-    fn default() -> Self {
-        Self::new()
+impl Printer for WasmPrinter {
+    fn out(&self, val: String) {
+        self.print(val);
+    }
+
+    fn err(&self, val: String) {
+        self.print(val)
+    }
+}
+
+#[wasm_bindgen]
+impl Lox {
+    #[wasm_bindgen(constructor)]
+    pub fn new(printer: &js_sys::Function) -> Self {
+        Self {
+            rt: RunTime::new(WasmPrinter::new(printer)),
+        }
+    }
+
+    pub fn run(&mut self, code: String) {
+        self.rt.run(&code)
     }
 }

@@ -6,7 +6,7 @@ use crate::ast::{Expr, Stmt};
 use crate::environment::Environment;
 use crate::token::{Token, TokenType};
 use crate::types::{Callable, Class, FindMethod, LoxValue, NativeFunction, UserFunction};
-use crate::Reportable;
+use crate::{Printer, Reportable};
 
 fn is_truthy(val: &LoxValue) -> bool {
     match val {
@@ -101,10 +101,11 @@ pub struct Interpreter {
     environment: Rc<RefCell<Environment>>,
     globals: Rc<RefCell<Environment>>,
     outputs: Vec<String>,
+    printer: Rc<dyn Printer>,
 }
 
 impl Interpreter {
-    pub fn new() -> Self {
+    pub fn new(printer: Rc<dyn Printer>) -> Self {
         let globals = Rc::new(RefCell::new(Environment::new(None)));
 
         // move this if there are ever more native functions
@@ -122,6 +123,7 @@ impl Interpreter {
             globals: Rc::clone(&globals),
             environment: Rc::clone(&globals),
             outputs: Vec::new(),
+            printer,
         }
     }
 
@@ -251,6 +253,7 @@ impl Interpreter {
             }
             Stmt::Print { expression } => {
                 let value = self.evaluate(expression, Rc::clone(&environment), locals)?;
+                self.printer.out(format!("{}", value));
                 self.outputs.push(format!("{}", value));
             }
             Stmt::Return { value, .. } => {

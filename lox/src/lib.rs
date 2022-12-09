@@ -1,5 +1,6 @@
 use std::fs;
 use std::io::{self, Write};
+use std::rc::Rc;
 
 use colored::Colorize;
 
@@ -33,6 +34,23 @@ where
     }
 }
 
+pub trait Printer: std::fmt::Debug {
+    fn out(&self, val: String);
+    fn err(&self, val: String);
+}
+
+#[derive(Debug)]
+struct SysPrinter {}
+impl Printer for SysPrinter {
+    fn out(&self, val: String) {
+        println!("{}", val)
+    }
+
+    fn err(&self, val: String) {
+        eprintln!("{}", val)
+    }
+}
+
 pub trait Reportable {
     fn report(&self) -> String;
 }
@@ -42,14 +60,17 @@ pub struct RunTime {
     had_error: bool,
     had_runtime_error: bool,
     interpreter: Interpreter,
+    printer: Rc<dyn Printer>,
 }
 
 impl RunTime {
-    pub fn new() -> RunTime {
+    pub fn new(printer: impl Printer + 'static) -> RunTime {
+        let p = Rc::new(printer);
         RunTime {
             had_error: false,
             had_runtime_error: false,
-            interpreter: Interpreter::new(),
+            interpreter: Interpreter::new(p.clone()),
+            printer: p,
         }
     }
 
@@ -58,52 +79,56 @@ impl RunTime {
         let mut scanner = Scanner::new(code);
         let (tokens, scan_errs) = scanner.scan_tokens();
 
-        println!("{}", "\nScanned tokens:".bold().cyan());
+        self.printer
+            .out(format!("{}", "\nScanned tokens:".bold().cyan()));
         for token in tokens {
-            println!("{}", token)
+            self.printer.out(format!("{}", token))
         }
         for err in scan_errs {
-            eprintln!("{}", self.error(&err))
+            self.error(&err)
         }
 
         // parsing phase
         let mut parser = Parser::new(tokens);
         let (ast, parse_errs) = parser.parse();
         for err in parse_errs {
-            eprintln!("{}", self.error(&err))
+            self.error(&err)
         }
 
         // short circuit at this point if we've had errors
         if self.had_error {
-            eprintln!("{}", "\nOH NO! we had an error!".bold().red());
+            self.printer
+                .err(format!("{}", "\nOH NO! we had an error!".bold().red()));
             return;
         }
 
-        println!("{}", "\nParsed AST:".bold().yellow());
+        self.printer
+            .out(format!("{}", "\nParsed AST:".bold().yellow()));
         for stmt in &ast {
-            println!("{}", stmt.print());
+            self.printer.out(stmt.print());
         }
 
         let mut resolver = Resolver::new();
         let (locals, resolve_errs) = resolver.resolve(&ast);
         for err in resolve_errs {
-            eprintln!("{}", self.error(&err))
+            self.error(&err)
         }
 
         // short circuit at this point if we've had errors
         if self.had_error {
-            eprintln!("{}", "\nOH NO! we had an error!".bold().red());
+            self.printer
+                .err(format!("{}", "\nOH NO! we had an error!".bold().red()));
             return;
         }
 
-        println!("{}", "\nResult:".bold().green());
+        self.printer.out(format!("{}", "\nResult:".bold().green()));
         match self.interpreter.interpret(ast, locals) {
-            Ok(v) => println!("{}", v),
-            Err(err) => eprintln!("{}", self.runtime_error(err)),
+            Ok(v) => self.printer.out(v),
+            Err(err) => self.runtime_error(err),
         };
     }
 
-    pub fn run(&mut self, code: &String) -> Result<String, String> {
+    pub fn run(&mut self, code: &String) {
         // scanning phase
         let mut scanner = Scanner::new(code);
         let (tokens, scan_errs) = scanner.scan_tokens();
@@ -112,37 +137,37 @@ impl RunTime {
         let mut parser = Parser::new(tokens);
         let (ast, parse_errs) = parser.parse();
         if !scan_errs.is_empty() || !parse_errs.is_empty() {
-            let errs = self.error_all(scan_errs) + "\n" + &self.error_all(parse_errs);
-            return Err(errs.trim().to_string());
+            self.error_all(scan_errs);
+            self.error_all(parse_errs);
+            return;
         }
 
         let mut resolver = Resolver::new();
         let (locals, resolve_errs) = resolver.resolve(&ast);
         if !resolve_errs.is_empty() {
-            return Err(self.error_all(resolve_errs));
+            return;
         }
 
         match self.interpreter.interpret(ast, locals) {
-            Ok(s) => Ok(s),
-            Err(err) => Err(self.runtime_error(err)),
+            Ok(s) => self.printer.out(s),
+            Err(err) => self.runtime_error(err),
+        };
+    }
+
+    fn error_all(&mut self, errs: Vec<impl Reportable>) {
+        for err in errs.iter() {
+            self.error(err);
         }
     }
 
-    fn error_all(&mut self, errs: Vec<impl Reportable>) -> String {
-        errs.iter()
-            .map(|e| self.error(e))
-            .collect::<Vec<String>>()
-            .join("\n")
-    }
-
-    fn error(&mut self, err: &impl Reportable) -> String {
+    fn error(&mut self, err: &impl Reportable) {
         self.had_error = true;
-        err.report()
+        self.printer.err(err.report())
     }
 
-    fn runtime_error(&mut self, err: impl Reportable) -> String {
+    fn runtime_error(&mut self, err: impl Reportable) {
         self.had_runtime_error = true;
-        err.report()
+        self.printer.err(err.report())
     }
 
     pub fn run_file(&mut self, file_path: &String) {
@@ -162,10 +187,7 @@ impl RunTime {
             if code.is_empty() {
                 break;
             };
-            match self.run(&code) {
-                Ok(s) => println!("{}", s),
-                Err(s) => eprintln!("{}", s),
-            };
+            self.run(&code);
             code.clear();
             self.had_error = false;
             self.had_runtime_error = false;
@@ -185,6 +207,6 @@ impl RunTime {
 
 impl Default for RunTime {
     fn default() -> Self {
-        Self::new()
+        Self::new(SysPrinter {})
     }
 }
